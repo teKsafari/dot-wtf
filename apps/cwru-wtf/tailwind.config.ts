@@ -2,6 +2,12 @@ import type { Config } from "tailwindcss"
 
 const config: Config = {
   darkMode: ["class"],
+  future: {
+    // Touch devices fire :hover on tap and leave it stuck until the next tap
+    // elsewhere. This compiles every `hover:` utility under
+    // `@media (hover: hover)` so those states only exist for real pointers.
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     "./pages/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
