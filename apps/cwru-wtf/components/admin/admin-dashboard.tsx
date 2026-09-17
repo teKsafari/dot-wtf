@@ -99,11 +99,7 @@ export default function AdminDashboard({
 }: AdminDashboardProps) {
   const [submissions, setSubmissions] =
     useState<AdminSubmission[]>(initialSubmissions);
-  const [filter, setFilter] = useState<SubmissionFilter>(() =>
-    initialSubmissions.some((submission) => submission.isApproved === null)
-      ? "pending"
-      : "all",
-  );
+  const [filter, setFilter] = useState<SubmissionFilter>("pending");
   const [search, setSearch] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<
