@@ -19,9 +19,39 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        brand: ["var(--font-brand)", "ui-rounded", "ui-sans-serif", "system-ui", "sans-serif"],
-        primary: ["var(--font-primary)", "ui-sans-serif", "system-ui", "sans-serif"],
-        sans: ["var(--font-primary)", "ui-sans-serif", "system-ui", "sans-serif"],
+        // SF Pro Rounded, by every route available to a stylesheet: the named
+        // family first, for machines that have Apple's download installed;
+        // then `ui-rounded`, which resolves to it on every Apple platform
+        // whether installed or not. Nunito only catches what is left —
+        // Windows, Android, Linux — where the file cannot be served, since
+        // Apple's font licence does not permit embedding it on the web.
+        //
+        // `brand` and `primary` stay as aliases so existing markup keeps
+        // working; there is one family now.
+        sans: [
+          "'SF Pro Rounded'",
+          "ui-rounded",
+          "var(--font-rounded)",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
+        brand: [
+          "'SF Pro Rounded'",
+          "ui-rounded",
+          "var(--font-rounded)",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
+        primary: [
+          "'SF Pro Rounded'",
+          "ui-rounded",
+          "var(--font-rounded)",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
         mono: ["var(--font-mono)", "ui-monospace", "Consolas", "monospace"],
       },
       fontSize: {

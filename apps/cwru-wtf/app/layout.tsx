@@ -1,7 +1,7 @@
 import type React from "react"
 import "./globals.css"
 import type { Metadata } from "next"
-import { fontBrand, fontPrimary, fontMono } from "@/lib/fonts"
+import { fontRounded, fontMono } from "@/lib/fonts"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 import { SessionProvider } from "next-auth/react"
@@ -39,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${fontBrand.variable} ${fontPrimary.variable} ${fontMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${fontRounded.variable} ${fontMono.variable}`}>
       <body className="font-primary antialiased">
         <SessionProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
