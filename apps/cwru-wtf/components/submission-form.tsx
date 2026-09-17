@@ -31,7 +31,16 @@ const submissionSchema = z
       .min(1, "Please tell us about your current project")
       .max(600, "Maximum 100 words (approximately 600 characters)"),
     youtubeLink: z.string().url("Please enter a valid URL"),
-    whatsapp: z.string().optional(),
+    whatsapp: z
+      .string()
+      .min(1, "Please add your WhatsApp number")
+      // The country selector prefills a dial code, so a field the user never
+      // touched still arrives as "+1". Count the digits instead of the
+      // characters: E.164 allows 15 at most, and nothing real is under 8.
+      .refine((val) => {
+        const digits = val.replace(/\D/g, "");
+        return digits.length >= 8 && digits.length <= 15;
+      }, "Please enter a valid WhatsApp number"),
   })
   .refine(
     (data) => {
@@ -68,6 +77,11 @@ export default function SubmissionForm() {
     resolver: zodResolver(submissionSchema),
     defaultValues: {
       categories: [],
+      // The country selector shows a prefilled "+1 " but keeps it internal —
+      // its onChange only fires on interaction — so without a default here an
+      // untouched field submits as undefined and zod answers "Required"
+      // instead of the message below it.
+      whatsapp: "",
     },
   });
 
@@ -184,15 +198,27 @@ export default function SubmissionForm() {
             value={whatsappValue}
             onChange={(val) => {
               setWhatsappValue(val);
-              setValue("whatsapp", val);
+              // Registered fields revalidate on change once they have failed a
+              // submit; this one is set by hand, so mirror that rather than
+              // validating from the first keystroke.
+              setValue("whatsapp", val, {
+                shouldValidate: !!errors.whatsapp,
+              });
             }}
-            placeholder="WhatsApp number (optional)"
+            placeholder="WhatsApp number"
+            invalid={!!errors.whatsapp}
             className="mt-2"
           />
-          <p className="mt-2 flex items-start gap-1.5 text-body-sm text-muted-foreground">
-            <span className="shrink-0 leading-5">💬</span>
-            <span>Our community hangs out on WhatsApp — drop your number to stay in the loop</span>
-          </p>
+          {errors.whatsapp ? (
+            <p className="mt-2 font-primary text-body-sm text-destructive">
+              {errors.whatsapp.message}
+            </p>
+          ) : (
+            <p className="mt-2 flex items-start gap-1.5 text-body-sm text-muted-foreground">
+              <span className="shrink-0 leading-5">💬</span>
+              <span>Our community hangs out on WhatsApp — this is how we&apos;ll reach you</span>
+            </p>
+          )}
         </div>
 
         <div>
