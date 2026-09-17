@@ -17,14 +17,10 @@ import {
   CheckCheck,
   ChevronLeft,
   ChevronRight,
-  Inbox,
   LoaderCircle,
   LogOut,
-  Mail,
-  Phone,
   RefreshCw,
   Search,
-  Video,
   X,
   XCircle,
 } from "lucide-react";
@@ -77,18 +73,18 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
 
 const statusCopy = {
   approved: {
-    badgeClassName: "border-success/20 bg-success/10 text-success",
     dotClassName: "bg-success",
+    textClassName: "text-success",
     label: "Approved",
   },
   pending: {
-    badgeClassName: "border-border bg-muted text-foreground",
-    dotClassName: "bg-foreground",
+    dotClassName: "bg-foreground/40",
+    textClassName: "text-muted-foreground",
     label: "Pending",
   },
   rejected: {
-    badgeClassName: "border-destructive/20 bg-destructive/10 text-destructive",
     dotClassName: "bg-destructive",
+    textClassName: "text-destructive",
     label: "Rejected",
   },
 } as const;
@@ -347,7 +343,7 @@ export default function AdminDashboard({
       : null;
 
   return (
-    <div className="min-h-[100svh] bg-muted/30 text-foreground">
+    <div className="min-h-[100svh] bg-background text-foreground">
       <a
         href="#admin-main"
         className="focus-ring sr-only z-50 rounded-lg bg-primary px-4 py-3 text-primary-foreground focus:fixed focus:left-4 focus:top-4 focus:not-sr-only"
@@ -355,7 +351,7 @@ export default function AdminDashboard({
         Skip to Content
       </a>
 
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-[1360px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
@@ -402,34 +398,25 @@ export default function AdminDashboard({
       >
         <section
           aria-labelledby="applications-heading"
-          className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"
+          className="flex items-baseline justify-between gap-4"
         >
-          <div>
-            <p className="font-mono text-caption uppercase tracking-[0.18em] text-muted-foreground">
-              Submission Desk
-            </p>
-            <h1
-              id="applications-heading"
-              className="mt-2 text-pretty font-brand text-3xl font-semibold tracking-[-0.025em] text-foreground sm:text-4xl"
-            >
-              Applications
-            </h1>
-            <p className="mt-2 text-body-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {stats.pending === 0
-                  ? "Inbox clear"
-                  : numberFormatter.format(stats.pending) + " awaiting review"}
-              </span>
-              <span aria-hidden="true"> · </span>
-              {numberFormatter.format(stats.total)} total
-            </p>
-          </div>
+          <h1
+            id="applications-heading"
+            className="font-brand text-2xl font-semibold tracking-[-0.02em] text-foreground"
+          >
+            Applications
+            <span className="ml-3 font-mono text-body-sm font-normal tabular-nums text-muted-foreground">
+              {stats.pending === 0
+                ? "inbox clear"
+                : numberFormatter.format(stats.pending) + " to review"}
+            </span>
+          </h1>
 
-          <Button
+          <button
+            type="button"
             onClick={refreshSubmissions}
-            variant="outline"
             disabled={isRefreshing || pendingDecision !== null}
-            className="h-10 self-start rounded-xl border-border bg-background px-4 text-foreground hover:bg-muted hover:text-foreground sm:self-auto"
+            className="focus-ring -mr-2 inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-2 text-body-sm text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           >
             {isRefreshing ? (
               <LoaderCircle
@@ -439,122 +426,102 @@ export default function AdminDashboard({
             ) : (
               <RefreshCw aria-hidden="true" className="h-4 w-4" />
             )}
-            {isRefreshing ? "Refreshing…" : "Refresh"}
-          </Button>
+            <span className="hidden sm:inline">
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </span>
+          </button>
         </section>
 
         <section
           aria-label="Application review workspace"
-          className="mt-6 overflow-hidden rounded-xl border border-border bg-card lg:flex lg:h-[calc(100svh-15.5rem)] lg:min-h-[520px] lg:flex-col"
+          className="mt-5 border-t border-border lg:flex lg:h-[calc(100svh-11.5rem)] lg:min-h-[520px] lg:flex-col"
         >
           <div
             className={cn(
-              "border-b border-border",
-              hasSelectedSubmission && "hidden lg:block",
+              "flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between",
+              hasSelectedSubmission && "hidden lg:flex",
             )}
           >
-            <div className="flex items-center gap-1 overflow-x-auto px-3 pt-2">
-              <div
-                className="flex min-w-max items-center gap-1"
-                role="group"
-                aria-label="Filter applications by status"
-              >
-                {filterOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => selectFilter(option.id)}
-                    aria-pressed={filter === option.id}
-                    className={cn(
-                      "focus-ring relative inline-flex h-10 items-center gap-2 rounded-lg px-3 text-body-sm font-medium transition-colors",
-                      filter === option.id
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                    )}
-                  >
-                    {option.label}
-                    <span
-                      className={cn(
-                        "font-mono text-xs tabular-nums",
-                        filter === option.id
-                          ? "text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {numberFormatter.format(option.count)}
-                    </span>
-                  </button>
-                ))}
-              </div>
+            <div
+              className="-mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1"
+              role="group"
+              aria-label="Filter applications by status"
+            >
+              {filterOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => selectFilter(option.id)}
+                  aria-pressed={filter === option.id}
+                  className={cn(
+                    "focus-ring inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-body-sm transition-colors duration-150",
+                    filter === option.id
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {option.label}
+                  <span className="font-mono text-xs tabular-nums opacity-60">
+                    {numberFormatter.format(option.count)}
+                  </span>
+                </button>
+              ))}
             </div>
 
-            <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <label htmlFor="application-search" className="sr-only">
-                  Search applications
-                </label>
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                  id="application-search"
-                  name="application-search"
-                  type="search"
-                  value={search}
-                  onChange={(event) => updateSearch(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Search names, emails, or ideas…"
-                  className="h-10 rounded-lg px-10 pr-11"
-                />
-                {search ? (
-                  <button
-                    type="button"
-                    onClick={() => updateSearch("")}
-                    aria-label="Clear application search"
-                    className="focus-ring absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <X aria-hidden="true" className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </div>
-
-              <p
-                className="shrink-0 font-mono text-caption tabular-nums text-muted-foreground"
-                aria-live="polite"
-              >
-                {numberFormatter.format(filteredSubmissions.length)}{" "}
-                {filteredSubmissions.length === 1
-                  ? "application"
-                  : "applications"}
-              </p>
+            <div className="relative w-full min-w-0 sm:max-w-[260px]">
+              <label htmlFor="application-search" className="sr-only">
+                Search applications
+              </label>
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id="application-search"
+                name="application-search"
+                type="search"
+                value={search}
+                onChange={(event) => updateSearch(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Search…"
+                className="h-8 rounded-md border-transparent bg-muted px-9 py-0 text-body-sm"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => updateSearch("")}
+                  aria-label="Clear application search"
+                  className="focus-ring absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                >
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(320px,0.82fr)_minmax(0,1.45fr)]">
+          {/* The visible count moved into the pagination line, so the queue
+              still announces itself to screen readers on filter and search. */}
+          <p className="sr-only" aria-live="polite">
+            {numberFormatter.format(filteredSubmissions.length)}{" "}
+            {filteredSubmissions.length === 1 ? "application" : "applications"}
+          </p>
+
+          <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.5fr)] lg:border-t lg:border-border">
+            <h2 className="sr-only">Application queue</h2>
             <div
               className={cn(
-                "min-h-0 flex-col bg-background",
+                "min-h-0 flex-col",
                 hasSelectedSubmission ? "hidden lg:flex" : "flex",
               )}
             >
-              <div className="border-b border-border px-4 py-3">
-                <h2 className="font-brand text-base font-semibold text-foreground">
-                  Application Queue
-                </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Select an application to review its full details.
-                </p>
-              </div>
-
               {visibleSubmissions.length === 0 ? (
                 <QueueEmptyState
                   hasNarrowedView={Boolean(deferredQuery) || filter !== "all"}
                   onReset={resetView}
                 />
               ) : (
-                <ul className="min-h-0 flex-1 divide-y divide-border lg:overflow-y-auto">
+                <ul className="min-h-0 flex-1 divide-y divide-border/60 lg:overflow-y-auto">
                   {visibleSubmissions.map((submission) => (
                     <li key={submission.id}>
                       <SubmissionRow
@@ -579,7 +546,7 @@ export default function AdminDashboard({
 
             <div
               className={cn(
-                "min-h-0 bg-background lg:flex lg:border-l lg:border-border",
+                "min-h-0 lg:flex lg:border-l lg:border-border",
                 hasSelectedSubmission ? "flex" : "hidden",
               )}
             >
@@ -620,53 +587,47 @@ function SubmissionRow({
   );
   const primaryCategory = categories[0];
 
+  const tone = getStatusTone(submission.isApproved);
+
   return (
     <button
       id={"submission-row-" + submission.id}
       type="button"
       onClick={onSelect}
       aria-current={isSelected ? "true" : undefined}
+      // Rows are clicked constantly, so this only transitions colour -- no
+      // entrance, no movement. See the animation frequency table in the
+      // design-eng skill.
       className={cn(
-        "focus-ring w-full border-l-2 px-4 py-4 text-left transition-colors",
-        isSelected
-          ? "border-l-foreground bg-muted/60"
-          : "border-l-transparent bg-background hover:bg-muted/40",
+        "focus-ring w-full px-4 py-3 text-left transition-colors duration-150",
+        isSelected ? "bg-muted" : "hover:bg-muted/50",
       )}
     >
-      <span className="flex min-w-0 items-start gap-3">
+      <span className="flex min-w-0 items-baseline gap-2">
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted font-brand text-sm font-semibold text-foreground"
+          className={cn(
+            "size-1.5 shrink-0 translate-y-[-1px] rounded-full",
+            tone.dotClassName,
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-foreground">
+          {submission.name}
+        </span>
+        <span className="sr-only">{tone.label}.</span>
+        <time
+          dateTime={submission.createdAt}
+          className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
         >
-          {getInitials(submission.name)}
-        </span>
-
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-start justify-between gap-2">
-            <span className="min-w-0 truncate text-body-sm font-semibold text-foreground">
-              {submission.name}
-            </span>
-            <StatusBadge status={submission.isApproved} compact />
-          </span>
-          <span className="mt-1 line-clamp-2 block break-words text-xs leading-5 text-muted-foreground">
-            {submission.wtfIdea || "No idea shared yet."}
-          </span>
-        </span>
-      </span>
-
-      <span className="mt-3 flex min-w-0 items-center gap-2 pl-12 font-mono text-xs text-muted-foreground">
-        <time dateTime={submission.createdAt}>
           {formatShortDate(submission.createdAt)}
         </time>
+      </span>
+
+      <span className="mt-1 line-clamp-1 block break-words pl-3.5 text-xs leading-5 text-muted-foreground">
         {primaryCategory ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="min-w-0 truncate">{primaryCategory}</span>
-            {categories.length > 1 ? (
-              <span className="shrink-0">+{categories.length - 1}</span>
-            ) : null}
-          </>
+          <span className="text-foreground/70">{primaryCategory} · </span>
         ) : null}
+        {submission.wtfIdea || "No idea shared yet."}
       </span>
     </button>
   );
@@ -705,63 +666,55 @@ function SubmissionDetail({
       aria-labelledby={headingId}
       className="flex min-h-0 w-full scroll-pt-28 scroll-pb-24 flex-col lg:overflow-y-auto"
     >
-      <header className="sticky top-16 z-10 border-b border-border bg-card/95 px-5 py-4 sm:px-6 lg:top-0">
+      <header className="sticky top-16 z-10 border-b border-border bg-background/80 px-5 py-4 backdrop-blur sm:px-6 lg:top-0">
         <button
           type="button"
           onClick={onBack}
-          className="focus-ring mb-4 inline-flex min-h-10 items-center gap-1 rounded-lg pr-2 text-body-sm font-medium text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+          className="focus-ring -ml-1 mb-3 inline-flex min-h-9 items-center gap-1 rounded-lg pr-2 text-body-sm text-muted-foreground transition-colors duration-150 hover:text-foreground lg:hidden"
         >
           <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-          Back to Queue
+          Queue
         </button>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <StatusBadge status={submission.isApproved} />
-            <h2
-              id={headingId}
-              ref={headingRef}
-              tabIndex={-1}
-              className="focus-ring mt-3 break-words rounded font-brand text-2xl font-semibold tracking-[-0.02em] text-foreground sm:text-3xl"
-            >
-              {submission.name}
-            </h2>
-            <p className="mt-2 font-mono text-xs leading-5 text-muted-foreground">
-              Submitted{" "}
-              <time dateTime={submission.createdAt}>
-                {formatDateTime(submission.createdAt)}
-              </time>
-              <span aria-hidden="true"> · </span>
-              Updated{" "}
-              <time dateTime={submission.updatedAt}>
-                {formatDateTime(submission.updatedAt)}
-              </time>
-            </p>
-          </div>
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h2
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+            className="focus-ring min-w-0 flex-1 break-words rounded font-brand text-xl font-semibold tracking-[-0.02em] text-foreground"
+          >
+            {submission.name}
+          </h2>
+          <StatusBadge status={submission.isApproved} />
         </div>
+        <p className="mt-1 font-mono text-xs text-muted-foreground">
+          <time dateTime={submission.createdAt}>
+            {formatDateTime(submission.createdAt)}
+          </time>
+        </p>
       </header>
 
       <div className="flex-1">
-        <DetailSection title="WTF Idea">
-          <p className="break-words whitespace-pre-wrap text-base leading-7 text-foreground">
+        <DetailSection title="WTF idea">
+          <p className="break-words whitespace-pre-wrap text-body leading-6 text-foreground">
             {submission.wtfIdea || "No idea shared yet."}
           </p>
         </DetailSection>
 
-        <DetailSection title="Current Project">
+        <DetailSection title="Current project">
           <p className="break-words whitespace-pre-wrap text-body-sm text-foreground">
             {submission.currentProject || "No project details shared yet."}
           </p>
         </DetailSection>
 
-        <DetailSection title="Categories & Interests">
+        <DetailSection title="Categories">
           <div className="flex flex-wrap gap-2">
             {categories.length > 0 ? (
               categories.map((category) => (
                 <Badge
                   key={category}
                   variant="outline"
-                  className="break-words border-border bg-background px-3 py-1 font-mono font-normal text-foreground"
+                  className="break-words border-border bg-transparent px-2 py-0.5 text-xs font-normal text-muted-foreground"
                 >
                   {category}
                 </Badge>
@@ -774,46 +727,30 @@ function SubmissionDetail({
           </div>
 
           {submission.interests ? (
-            <div className="mt-5 border-t border-border pt-4">
-              <p className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Additional Interests
-              </p>
-              <p className="mt-2 break-words whitespace-pre-wrap text-body-sm text-foreground">
-                {submission.interests}
-              </p>
-            </div>
+            <p className="mt-3 break-words whitespace-pre-wrap text-body-sm text-muted-foreground">
+              {submission.interests}
+            </p>
           ) : null}
         </DetailSection>
 
         <DetailSection title="Contact">
-          <dl className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
-            <ContactDetail label="Email" icon={<Mail className="h-4 w-4" />}>
+          <dl className="grid gap-2 sm:grid-cols-2">
+            <ContactDetail label="Email">
               <a
-                className="focus-ring inline-flex max-w-full items-center gap-1 rounded break-all text-link hover:underline"
+                className="focus-ring rounded break-all text-link hover:underline"
                 href={"mailto:" + submission.email}
               >
                 {submission.email}
-                <ArrowUpRight
-                  aria-hidden="true"
-                  className="h-3.5 w-3.5 shrink-0"
-                />
               </a>
             </ContactDetail>
 
-            <ContactDetail
-              label="Phone / WhatsApp"
-              icon={<Phone className="h-4 w-4" />}
-            >
+            <ContactDetail label="WhatsApp">
               {submission.whatsapp ? (
                 <a
-                  className="focus-ring inline-flex max-w-full items-center gap-1 rounded break-all text-link hover:underline"
+                  className="focus-ring rounded break-all text-link hover:underline"
                   href={"tel:" + submission.whatsapp}
                 >
                   {submission.whatsapp}
-                  <ArrowUpRight
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 shrink-0"
-                  />
                 </a>
               ) : (
                 <span className="text-muted-foreground">Not shared</span>
@@ -823,14 +760,9 @@ function SubmissionDetail({
         </DetailSection>
 
         {videoReferenceUrl ? (
-          <DetailSection title="Video Reference" isLast>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Video aria-hidden="true" className="h-4 w-4" />
-              <p className="text-body-sm">Applicant-provided reference video</p>
-            </div>
-
+          <DetailSection title="Video" isLast>
             {youtubeEmbedUrl ? (
-              <div className="mt-4 aspect-video overflow-hidden rounded-lg border border-border bg-foreground">
+              <div className="aspect-video overflow-hidden rounded-lg border border-border bg-foreground">
                 <iframe
                   src={youtubeEmbedUrl}
                   title={submission.name + " YouTube reference"}
@@ -847,9 +779,12 @@ function SubmissionDetail({
               href={videoReferenceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring mt-4 inline-flex items-center gap-1 rounded text-body-sm font-medium text-link hover:underline"
+              className={cn(
+                "focus-ring inline-flex items-center gap-1 rounded text-body-sm text-link hover:underline",
+                youtubeEmbedUrl && "mt-3",
+              )}
             >
-              Open Video
+              Open video
               <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
@@ -857,54 +792,47 @@ function SubmissionDetail({
         ) : null}
       </div>
 
-      <footer className="sticky bottom-0 z-10 mt-auto border-t border-border bg-card/95 p-4 sm:px-6">
+      <footer className="sticky bottom-0 z-10 mt-auto border-t border-border bg-background/80 px-5 py-3 backdrop-blur sm:px-6">
         {isPending ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-body-sm text-muted-foreground">
-              Ready to make a decision?
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <RejectSubmissionDialog
-                activeDecision={activeDecision}
-                disabled={decisionsDisabled}
-                name={submission.name}
-                onReject={() => onDecision(submission.id, false)}
-              />
-              <Button
-                onClick={() => onDecision(submission.id, true)}
-                disabled={decisionsDisabled}
-                aria-busy={activeDecision === true}
-                aria-label={"Approve " + submission.name}
-                className="h-10 rounded-xl bg-primary px-4 text-primary-foreground hover:bg-primary/90"
-              >
-                {activeDecision === true ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="h-4 w-4 animate-spin"
-                  />
-                ) : (
-                  <CheckCheck aria-hidden="true" className="h-4 w-4" />
-                )}
-                {activeDecision === true ? "Approving…" : "Approve"}
-              </Button>
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            <RejectSubmissionDialog
+              activeDecision={activeDecision}
+              disabled={decisionsDisabled}
+              name={submission.name}
+              onReject={() => onDecision(submission.id, false)}
+            />
+            <Button
+              onClick={() => onDecision(submission.id, true)}
+              disabled={decisionsDisabled}
+              aria-busy={activeDecision === true}
+              aria-label={"Approve " + submission.name}
+              size="sm"
+              className="h-9 px-4 text-body-sm"
+            >
+              {activeDecision === true ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin"
+                />
+              ) : (
+                <CheckCheck aria-hidden="true" className="h-4 w-4" />
+              )}
+              {activeDecision === true ? "Approving…" : "Approve"}
+            </Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-body-sm text-muted-foreground">
-              Decision recorded as{" "}
-              <span className="font-medium text-foreground">
-                {getStatusTone(submission.isApproved).label.toLowerCase()}
-              </span>
-              .
+              {getStatusTone(submission.isApproved).label}
             </p>
             {nextPendingSubmission ? (
               <Button
                 onClick={onReviewNext}
-                variant="outline"
-                className="h-10 rounded-xl border-border bg-background px-4 text-foreground hover:bg-muted hover:text-foreground"
+                variant="ghost"
+                size="sm"
+                className="h-9 text-body-sm"
               >
-                Review Next Pending
+                Next pending
                 <ChevronRight aria-hidden="true" className="h-4 w-4" />
               </Button>
             ) : null}
@@ -933,8 +861,9 @@ function RejectSubmissionDialog({
           disabled={disabled}
           aria-busy={activeDecision === false}
           aria-label={"Reject " + name}
-          variant="outline"
-          className="h-10 rounded-xl border-destructive/30 bg-background px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          variant="ghost"
+          size="sm"
+          className="h-9 px-4 text-body-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           {activeDecision === false ? (
             <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
@@ -946,32 +875,30 @@ function RejectSubmissionDialog({
       </AlertDialog.Trigger>
 
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-foreground/20 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <AlertDialog.Content className="focus-ring fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overscroll-contain rounded-xl border border-border bg-background p-6 shadow-lg data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
-          <AlertDialog.Title className="text-pretty font-brand text-xl font-semibold text-foreground">
-            Reject This Application?
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-foreground/20 duration-150 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <AlertDialog.Content className="focus-ring fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overscroll-contain rounded-xl border border-border bg-background p-5 shadow-lg ease-[cubic-bezier(0.23,1,0.32,1)] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:duration-150 data-[state=open]:duration-200">
+          <AlertDialog.Title className="text-pretty font-brand text-base font-semibold text-foreground">
+            Reject {name}?
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-3 break-words text-body-sm text-muted-foreground">
-            “{name}” will move out of the pending queue. This decision is
-            recorded immediately.
+          <AlertDialog.Description className="mt-2 break-words text-body-sm text-muted-foreground">
+            This is recorded immediately and moves them out of the pending
+            queue.
           </AlertDialog.Description>
 
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialog.Cancel asChild>
-              <Button
-                variant="outline"
-                className="rounded-xl border-border bg-background text-foreground hover:bg-muted hover:text-foreground"
-              >
-                Keep Pending
+              <Button variant="ghost" size="sm" className="h-9 text-body-sm">
+                Cancel
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
               <Button
                 onClick={() => void onReject()}
                 variant="destructive"
-                className="rounded-xl"
+                size="sm"
+                className="h-9 text-body-sm"
               >
-                Reject Application
+                Reject
               </Button>
             </AlertDialog.Action>
           </div>
@@ -981,26 +908,19 @@ function RejectSubmissionDialog({
   );
 }
 
-function StatusBadge({
-  status,
-  compact = false,
-}: {
-  status: boolean | null;
-  compact?: boolean;
-}) {
+function StatusBadge({ status }: { status: boolean | null }) {
   const tone = getStatusTone(status);
 
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border font-mono font-medium uppercase tracking-[0.08em]",
-        compact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs",
-        tone.badgeClassName,
+        "inline-flex shrink-0 items-center gap-1.5 text-body-sm",
+        tone.textClassName,
       )}
     >
       <span
         aria-hidden="true"
-        className={cn("h-1.5 w-1.5 rounded-full", tone.dotClassName)}
+        className={cn("size-1.5 rounded-full", tone.dotClassName)}
       />
       {tone.label}
     </span>
@@ -1019,36 +939,27 @@ function DetailSection({
   return (
     <section
       className={cn(
-        "px-5 py-5 sm:px-6 sm:py-6",
-        !isLast && "border-b border-border",
+        "px-5 py-4 sm:px-6",
+        !isLast && "border-b border-border/60",
       )}
     >
-      <h3 className="font-mono text-caption uppercase tracking-[0.16em] text-muted-foreground">
-        {title}
-      </h3>
-      <div className="mt-3">{children}</div>
+      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+      <div className="mt-2">{children}</div>
     </section>
   );
 }
 
 function ContactDetail({
   label,
-  icon,
   children,
 }: {
   label: string;
-  icon: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="min-w-0 bg-background p-4">
-      <dt className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground [&_svg]:shrink-0">
-        <span aria-hidden="true">{icon}</span>
-        {label}
-      </dt>
-      <dd className="mt-2 min-w-0 text-body-sm font-medium text-foreground">
-        {children}
-      </dd>
+    <div className="min-w-0">
+      <dt className="sr-only">{label}</dt>
+      <dd className="min-w-0 text-body-sm text-foreground">{children}</dd>
     </div>
   );
 }
@@ -1062,23 +973,18 @@ function QueueEmptyState({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <Inbox aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
-      <h3 className="mt-4 font-brand text-section-title text-foreground">
-        {hasNarrowedView ? "No Matching Applications" : "No Applications Yet"}
-      </h3>
-      <p className="mt-2 max-w-sm text-body-sm text-muted-foreground">
-        {hasNarrowedView
-          ? "Clear the search and filters to return to the full queue."
-          : "New applications will appear here as soon as they arrive."}
+      <p className="text-body-sm text-muted-foreground">
+        {hasNarrowedView ? "Nothing matches." : "No applications yet."}
       </p>
       {hasNarrowedView ? (
         <Button
           type="button"
           onClick={onReset}
-          variant="outline"
-          className="mt-5 rounded-xl border-border bg-background text-foreground hover:bg-muted hover:text-foreground"
+          variant="ghost"
+          size="sm"
+          className="mt-2 text-body-sm"
         >
-          Clear Search & Filters
+          Show all
         </Button>
       ) : null}
     </div>
@@ -1087,16 +993,9 @@ function QueueEmptyState({
 
 function DetailPlaceholder() {
   return (
-    <div className="flex min-h-full w-full flex-col items-center justify-center px-6 py-16 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Inbox aria-hidden="true" className="h-5 w-5" />
-      </span>
-      <h2 className="mt-4 font-brand text-section-title text-foreground">
-        Select an Application
-      </h2>
-      <p className="mt-2 max-w-sm text-body-sm text-muted-foreground">
-        Choose a person from the queue to review their idea, project, and
-        contact details.
+    <div className="flex min-h-full w-full items-center justify-center px-6 py-16 text-center">
+      <p className="text-body-sm text-muted-foreground">
+        Select an application to review it.
       </p>
     </div>
   );
@@ -1119,7 +1018,7 @@ function QueuePagination({
   return (
     <nav
       aria-label="Application queue pages"
-      className="flex items-center justify-between gap-3 border-t border-border px-4 py-3"
+      className="flex items-center justify-between gap-3 border-t border-border px-4 py-2"
     >
       <p
         className="font-mono text-xs tabular-nums text-muted-foreground"
@@ -1136,22 +1035,22 @@ function QueuePagination({
         <Button
           type="button"
           size="icon"
-          variant="outline"
+          variant="ghost"
           disabled={pageIndex === 0}
           onClick={() => onPageChange(pageIndex - 1)}
           aria-label="Previous page"
-          className="h-9 w-9 rounded-lg border-border bg-background text-foreground hover:bg-muted hover:text-foreground"
+          className="size-8"
         >
           <ChevronLeft aria-hidden="true" className="h-4 w-4" />
         </Button>
         <Button
           type="button"
           size="icon"
-          variant="outline"
+          variant="ghost"
           disabled={pageIndex >= pageCount - 1}
           onClick={() => onPageChange(pageIndex + 1)}
           aria-label="Next page"
-          className="h-9 w-9 rounded-lg border-border bg-background text-foreground hover:bg-muted hover:text-foreground"
+          className="size-8"
         >
           <ChevronRight aria-hidden="true" className="h-4 w-4" />
         </Button>
@@ -1239,17 +1138,6 @@ function buildSearchBlob(submission: AdminSubmission) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-}
-
-function getInitials(name: string) {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-
-  return initials || "?";
 }
 
 function formatDateTime(date: string) {
