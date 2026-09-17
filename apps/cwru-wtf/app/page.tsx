@@ -21,12 +21,15 @@ export default function Home() {
 
         <WtfMeanings />
 
-        <p className="mt-6 max-w-[46ch] text-pretty font-primary text-body text-muted-foreground md:text-lg">
-          A student-led collective for{" "}
-          <span className="wavy text-foreground">builders</span>,{" "}
-          <span className="wavy text-foreground">tinkerers</span>, and{" "}
-          <span className="wavy text-foreground">dreamers</span> at Case Western
-          Reserve University.
+        <p className="mt-6 max-w-[52ch] text-pretty font-primary text-body text-muted-foreground md:text-lg">
+          A student-led collective of{" "}
+          <span className="vibe text-foreground">dreamers</span>,{" "}
+          <span className="vibe text-foreground">builders</span>,{" "}
+          <span className="vibe text-foreground">tinkerers</span>,{" "}
+          <span className="vibe text-foreground">artists</span>,{" "}
+          <span className="vibe text-foreground">hackers</span>, etc...
+          encouraging interdisciplinary collaborations among members of the CWRU
+          community.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
