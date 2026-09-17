@@ -299,7 +299,7 @@ export default function SubmissionForm() {
 
         <div>
           <Label htmlFor="youtubeLink">
-            A Youtube video of something that interests you
+            A video of something that interests you
           </Label>
           <Input
             {...register("youtubeLink")}
