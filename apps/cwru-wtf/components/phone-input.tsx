@@ -9,21 +9,24 @@ interface PhoneInputProps {
   id?: string;
   placeholder?: string;
   className?: string;
+  invalid?: boolean;
 }
 
-export default function PhoneInput({ id, value, onChange, placeholder, className }: PhoneInputProps) {
+export default function PhoneInput({ id, value, onChange, placeholder, className, invalid }: PhoneInputProps) {
   return (
     <ReactPhoneInput
       defaultCountry="us"
       value={value}
       onChange={onChange}
       placeholder={placeholder || "Phone number"}
-      inputProps={{ id }}
+      inputProps={{ id, "aria-invalid": invalid || undefined }}
       style={
         {
           "--react-international-phone-height": "46px",
           "--react-international-phone-border-radius": "0.75rem",
-          "--react-international-phone-border-color": "hsl(var(--border))",
+          "--react-international-phone-border-color": invalid
+            ? "hsl(var(--destructive))"
+            : "hsl(var(--border))",
           "--react-international-phone-background-color": "hsl(var(--card))",
           "--react-international-phone-text-color": "hsl(var(--foreground))",
           "--react-international-phone-dropdown-shadow": "0 18px 40px hsl(var(--foreground) / 0.12)",
@@ -37,9 +40,15 @@ export default function PhoneInput({ id, value, onChange, placeholder, className
         } as React.CSSProperties
       }
       className={className}
-      inputClassName="!w-full !rounded-r-xl !border !border-border !bg-card !px-4 !text-sm !text-foreground !outline-none !transition-[border-color,box-shadow] focus:!border-ring focus:!ring-[3px] focus:!ring-ring/20"
+      inputClassName={`!w-full !rounded-r-xl !border !bg-card !px-4 !text-sm !text-foreground !outline-none !transition-[border-color,box-shadow] focus:!ring-[3px] ${
+        invalid
+          ? "!border-destructive focus:!border-destructive focus:!ring-destructive/20"
+          : "!border-border focus:!border-ring focus:!ring-ring/20"
+      }`}
       countrySelectorStyleProps={{
-        buttonClassName: "!h-full !rounded-l-xl !border !border-border !bg-card !px-2.5 hover:!bg-secondary",
+        buttonClassName: `!h-full !rounded-l-xl !border !bg-card !px-2.5 hover:!bg-secondary ${
+          invalid ? "!border-destructive" : "!border-border"
+        }`,
         dropdownStyleProps: {
           className: "!z-50 !overflow-auto !rounded-xl !border !border-edge !bg-popover",
           listItemClassName: "!text-sm !text-popover-foreground hover:!bg-secondary",

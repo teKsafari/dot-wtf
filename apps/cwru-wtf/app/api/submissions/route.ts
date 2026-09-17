@@ -12,10 +12,11 @@ const submissionSchema = z.object({
   otherCategory: z.string().optional(),
   wtfIdea: z.string().min(1, 'Please tell us your WTF idea').max(600, 'Maximum 100 words (approximately 600 characters)'),
   currentProject: z.string().min(1, 'Please tell us about your current project').max(600, 'Maximum 100 words (approximately 600 characters)'),
-  youtubeLink: z.string().url('Please enter a valid YouTube URL').refine((url) => url.includes('youtube.com') || url.includes('youtu.be'), {
-    message: 'Must be a YouTube link',
-  }),
-  whatsapp: z.string().optional(),
+  youtubeLink: z.string().url('Please enter a valid URL'),
+  whatsapp: z.string().min(1, 'WhatsApp number is required').refine((val) => {
+    const digits = val.replace(/\D/g, '');
+    return digits.length >= 8 && digits.length <= 15;
+  }, 'Invalid WhatsApp number'),
 }).refine((data) => {
   // If "Other" is selected, otherCategory should be provided
   if (data.categories.includes('Other') && (!data.otherCategory || data.otherCategory.trim() === '')) {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
         wtfIdea: validatedData.wtfIdea,
         currentProject: validatedData.currentProject,
         youtubeLink: validatedData.youtubeLink,
-        whatsapp: validatedData.whatsapp || null,
+        whatsapp: validatedData.whatsapp,
         interests: null, // Keep for backward compatibility
       })
       .returning();
