@@ -58,6 +58,7 @@ const config: Config = {
           "system-ui",
           "sans-serif",
         ],
+        nunito: ["var(--font-rounded)", "ui-sans-serif", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "Consolas", "monospace"],
       },
       fontSize: {

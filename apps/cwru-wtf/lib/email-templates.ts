@@ -47,22 +47,22 @@ The cwru.wtf Team
     `
   },
   
-  rejected: {
-    subject: 'Thank you for your interest in cwru.wtf',
+  waitlisted: {
+    subject: "You're on the cwru.wtf waitlist",
     html: (name: string) => `
       <div style="font-family: monospace; background-color: #000000; color: #ffffff; padding: 20px;">
-        <h1>Thank you, ${name}</h1>
+        <h1>You're on the cwru.wtf waitlist, ${name}</h1>
         
-        <p>Thank you for your interest in joining <strong>cwru.wtf</strong>.</p>
+        <p>We've added your application to the <strong>cwru.wtf</strong> waitlist.</p>
         
-        <p>While we weren't able to accept your application at this time, we encourage you to:</p>
+        <p>We'll keep your application in consideration and reach out if a spot opens. In the meantime:</p>
         <ul>
           <li>Keep building and learning</li>
           <li>Follow us on social media for updates</li>
-          <li>Apply again in the future</li>
+          <li>Share what you're making with the community</li>
         </ul>
         
-        <p>The maker community is always growing, and we hope to see you around campus!</p>
+        <p>We're glad you're interested in the maker community, and we hope to see you around campus.</p>
         
         <p style="margin-top: 30px;">
           Best,<br>
@@ -71,16 +71,16 @@ The cwru.wtf Team
       </div>
     `,
     text: (name: string) => `
-Thank you, ${name}
+You're on the cwru.wtf waitlist, ${name}
 
-Thank you for your interest in joining cwru.wtf.
+We've added your application to the cwru.wtf waitlist.
 
-While we weren't able to accept your application at this time, we encourage you to:
+We'll keep your application in consideration and reach out if a spot opens. In the meantime:
 - Keep building and learning
 - Follow us on social media for updates
-- Apply again in the future
+- Share what you're making with the community
 
-The maker community is always growing, and we hope to see you around campus!
+We're glad you're interested in the maker community, and we hope to see you around campus.
 
 Best,
 The cwru.wtf Team
@@ -88,7 +88,7 @@ The cwru.wtf Team
   }
 };
 
-export function getEmailTemplate(status: 'approved' | 'rejected', name: string) {
+export function getEmailTemplate(status: 'approved' | 'waitlisted', name: string) {
   const template = emailTemplates[status];
   return {
     subject: template.subject,

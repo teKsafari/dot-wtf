@@ -6,6 +6,20 @@ import {
   type ThemeProviderProps,
 } from 'next-themes'
 
-export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+export function ThemeProvider({
+  children,
+  scriptProps,
+  ...props
+}: ThemeProviderProps) {
+  return (
+    <NextThemesProvider
+      {...props}
+      scriptProps={{
+        ...scriptProps,
+        type: typeof window === 'undefined' ? 'text/javascript' : 'text/plain',
+      }}
+    >
+      {children}
+    </NextThemesProvider>
+  )
 }
