@@ -12,6 +12,7 @@ export const submissions = pgTable('submissions', {
   whatsapp: text('whatsapp'), // Optional WhatsApp phone number
   interests: text('interests'), // Keep for backward compatibility, can be removed later
   isApproved: boolean('is_approved'), // Default is null (pending)
+  archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -19,7 +20,7 @@ export const submissions = pgTable('submissions', {
 export const actionLogs = pgTable('action_logs', {
   id: serial('id').primaryKey(),
   submissionId: integer('submission_id').references(() => submissions.id),
-  action: text('action').notNull(), // 'approved', 'rejected', 'email_sent', etc.
+  action: text('action').notNull(), // 'approved', 'waitlisted', 'archived', etc.
   details: text('details'), // Additional information about the action
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

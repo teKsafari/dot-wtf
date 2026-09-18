@@ -13,19 +13,22 @@ import {
 import { signOut } from "next-auth/react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
+  Archive as ArchiveIcon,
+  ArchiveRestore,
+  ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
-  CheckCheck,
+  Check,
   ChevronLeft,
   ChevronRight,
+  Inbox,
   LoaderCircle,
   LogOut,
   RefreshCw,
   Search,
   X,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Wordmark from "@/components/wordmark";
@@ -43,6 +46,7 @@ export interface AdminSubmission {
   whatsapp?: string | null;
   interests?: string | null;
   isApproved: boolean | null;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,7 +60,8 @@ interface AdminDashboardProps {
   initialSubmissions: AdminSubmission[];
 }
 
-type SubmissionFilter = "all" | "pending" | "approved" | "rejected";
+type SubmissionFilter = "all" | "pending" | "approved" | "waitlist" | "archive";
+type SubmissionAction = "approve" | "waitlist" | "archive" | "restore";
 
 const PAGE_SIZE = 12;
 
@@ -67,25 +72,20 @@ const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
 });
 const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
+  month: "short",
+  day: "numeric",
   timeZone: "America/New_York",
 });
 
 const statusCopy = {
   approved: {
-    dotClassName: "bg-success",
-    textClassName: "text-success",
     label: "Approved",
   },
   pending: {
-    dotClassName: "bg-foreground/40",
-    textClassName: "text-muted-foreground",
     label: "Pending",
   },
-  rejected: {
-    dotClassName: "bg-destructive",
-    textClassName: "text-destructive",
-    label: "Rejected",
+  waitlist: {
+    label: "Waitlisted",
   },
 } as const;
 
@@ -102,22 +102,25 @@ export default function AdminDashboard({
     number | null
   >(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pendingDecision, setPendingDecision] = useState<{
+  const [pendingMutation, setPendingMutation] = useState<{
     submissionId: number;
-    isApproved: boolean;
+    action: SubmissionAction;
   } | null>(null);
+  const requestInFlightRef = useRef(false);
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const queueFocusRestoreIdRef = useRef<number | null>(null);
   const pageFocusRequestedRef = useRef(false);
+  const detailNavigationRequestedRef = useRef(false);
   const deferredQuery = useDeferredValue(search.trim());
   const normalizedSearch = deferredQuery.toLowerCase();
 
   const stats = useMemo(() => getSubmissionStats(submissions), [submissions]);
   const filterOptions = [
     { id: "pending", label: "Pending", count: stats.pending },
-    { id: "all", label: "All", count: stats.total },
     { id: "approved", label: "Approved", count: stats.approved },
-    { id: "rejected", label: "Rejected", count: stats.rejected },
+    { id: "waitlist", label: "Waitlist", count: stats.waitlist },
+    { id: "all", label: "All", count: stats.total },
+    { id: "archive", label: "Archive", count: stats.archived },
   ] as const satisfies ReadonlyArray<{
     id: SubmissionFilter;
     label: string;
@@ -126,25 +129,9 @@ export default function AdminDashboard({
 
   const filteredSubmissions = useMemo(
     () =>
-      submissions.filter((submission) => {
-        if (filter === "pending" && submission.isApproved !== null) {
-          return false;
-        }
-
-        if (filter === "approved" && submission.isApproved !== true) {
-          return false;
-        }
-
-        if (filter === "rejected" && submission.isApproved !== false) {
-          return false;
-        }
-
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return buildSearchBlob(submission).includes(normalizedSearch);
-      }),
+      submissions.filter((submission) =>
+        submissionMatchesView(submission, filter, normalizedSearch),
+      ),
     [filter, normalizedSearch, submissions],
   );
 
@@ -165,21 +152,49 @@ export default function AdminDashboard({
       ) ?? null,
     [selectedSubmissionId, submissions],
   );
-  const nextPendingSubmission = useMemo(
-    () =>
-      submissions.find(
-        (submission) =>
-          submission.isApproved === null &&
-          submission.id !== selectedSubmissionId,
-      ) ?? null,
-    [selectedSubmissionId, submissions],
-  );
+  const { previousSubmission, nextSubmission } = useMemo(() => {
+    const selectedIndex = submissions.findIndex(
+      (submission) => submission.id === selectedSubmissionId,
+    );
+    let previous: AdminSubmission | null = null;
+    let next: AdminSubmission | null = null;
 
+    if (selectedIndex < 0) {
+      return { previousSubmission: previous, nextSubmission: next };
+    }
+
+    for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+      if (submissionMatchesView(submissions[index], filter, normalizedSearch)) {
+        previous = submissions[index];
+        break;
+      }
+    }
+
+    for (
+      let index = selectedIndex + 1;
+      index < submissions.length;
+      index += 1
+    ) {
+      if (submissionMatchesView(submissions[index], filter, normalizedSearch)) {
+        next = submissions[index];
+        break;
+      }
+    }
+
+    return { previousSubmission: previous, nextSubmission: next };
+  }, [filter, normalizedSearch, selectedSubmissionId, submissions]);
   useEffect(() => {
+    const navigatedWithinDetail = detailNavigationRequestedRef.current;
+    detailNavigationRequestedRef.current = false;
+
     if (
       selectedSubmissionId !== null &&
       window.matchMedia("(max-width: 1023px)").matches
     ) {
+      if (navigatedWithinDetail) {
+        return;
+      }
+
       const frameId = window.requestAnimationFrame(() => {
         detailHeadingRef.current?.focus();
       });
@@ -191,13 +206,18 @@ export default function AdminDashboard({
 
     if (selectedSubmissionId === null && rowId !== null) {
       const frameId = window.requestAnimationFrame(() => {
-        document.getElementById("submission-row-" + rowId)?.focus();
+        const queueTarget =
+          document.getElementById("submission-row-" + rowId) ??
+          document.querySelector<HTMLButtonElement>("[data-submission-row]") ??
+          document.getElementById("submission-filter-" + filter) ??
+          document.getElementById("applications-heading");
+        queueTarget?.focus();
         queueFocusRestoreIdRef.current = null;
       });
 
       return () => window.cancelAnimationFrame(frameId);
     }
-  }, [selectedSubmissionId]);
+  }, [filter, selectedSubmissionId]);
 
   useEffect(() => {
     if (
@@ -236,7 +256,16 @@ export default function AdminDashboard({
     setSelectedSubmissionId(null);
   };
 
+  const viewArchive = () => {
+    setFilter("archive");
+    setSearch("");
+    setPageIndex(0);
+    setSelectedSubmissionId(null);
+  };
+
   const refreshSubmissions = async () => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
     setIsRefreshing(true);
 
     try {
@@ -252,28 +281,43 @@ export default function AdminDashboard({
 
       setSubmissions(refreshedSubmissions);
       setPageIndex(0);
-      setSelectedSubmissionId((currentId) =>
-        currentId !== null &&
-        refreshedSubmissions.some((submission) => submission.id === currentId)
-          ? currentId
-          : null,
-      );
-      toast.success("Application queue refreshed.");
+      setSelectedSubmissionId((currentId) => {
+        if (currentId === null) return null;
+
+        const currentSubmission = refreshedSubmissions.find(
+          (submission) => submission.id === currentId,
+        );
+
+        if (
+          currentSubmission &&
+          submissionMatchesView(currentSubmission, filter, normalizedSearch)
+        ) {
+          return currentId;
+        }
+
+        queueFocusRestoreIdRef.current = currentId;
+        return null;
+      });
+      toast.success("Application queue refreshed.", { position: "top-center" });
     } catch (error) {
       console.error("Refresh error:", error);
       toast.error(
         "Could not refresh the queue. Check your connection and try again.",
+        { position: "top-center" },
       );
     } finally {
+      requestInFlightRef.current = false;
       setIsRefreshing(false);
     }
   };
 
-  const updateSubmissionStatus = async (
+  const updateSubmission = async (
     submissionId: number,
-    isApproved: boolean,
+    action: SubmissionAction,
   ) => {
-    setPendingDecision({ submissionId, isApproved });
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setPendingMutation({ submissionId, action });
 
     try {
       const response = await fetch("/api/admin/submissions", {
@@ -281,8 +325,26 @@ export default function AdminDashboard({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: submissionId, isApproved }),
+        body: JSON.stringify({ id: submissionId, action }),
       });
+
+      if (response.status === 409) {
+        toast.error(
+          "This application changed elsewhere. Refresh the queue and try again.",
+          { position: "top-center" },
+        );
+        return;
+      }
+
+      if (response.status === 404) {
+        toast.error(
+          "This application is no longer available. Refresh the queue.",
+          {
+            position: "top-center",
+          },
+        );
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Failed to update submission");
@@ -299,35 +361,48 @@ export default function AdminDashboard({
           submission.id === submissionId ? updatedSubmission : submission,
         ),
       );
-      setPageIndex(0);
 
-      toast.success(
-        "Application " + (isApproved ? "approved" : "rejected") + ".",
-      );
+      if (action === "archive" || action === "restore") {
+        queueFocusRestoreIdRef.current = submissionId;
+        setSelectedSubmissionId(null);
+        setPageIndex(0);
+      }
+
+      const successCopy: Record<SubmissionAction, string> = {
+        approve: "Application approved.",
+        waitlist: "Application moved to the waitlist.",
+        archive: "Application archived.",
+        restore: "Application restored.",
+      };
+      toast.success(successCopy[action], { position: "top-center" });
     } catch (error) {
       console.error("Update error:", error);
       toast.error(
-        "Could not save this decision. Check your connection and try again.",
+        "Could not save this change. Check your connection and try again.",
+        { position: "top-center" },
       );
     } finally {
-      setPendingDecision(null);
+      requestInFlightRef.current = false;
+      setPendingMutation(null);
     }
-  };
-
-  const reviewNextPending = () => {
-    if (!nextPendingSubmission) {
-      return;
-    }
-
-    setFilter("pending");
-    setSearch("");
-    setPageIndex(0);
-    setSelectedSubmissionId(nextPendingSubmission.id);
   };
 
   const returnToQueue = () => {
     queueFocusRestoreIdRef.current = selectedSubmissionId;
     setSelectedSubmissionId(null);
+  };
+
+  const navigateToSubmission = (submissionId: number) => {
+    const targetIndex = filteredSubmissions.findIndex(
+      (submission) => submission.id === submissionId,
+    );
+
+    if (targetIndex >= 0) {
+      setPageIndex(Math.floor(targetIndex / PAGE_SIZE));
+    }
+
+    detailNavigationRequestedRef.current = true;
+    setSelectedSubmissionId(submissionId);
   };
 
   const changePage = (nextPage: number) => {
@@ -337,56 +412,51 @@ export default function AdminDashboard({
   };
 
   const hasSelectedSubmission = selectedSubmission !== null;
-  const activeDecision =
-    pendingDecision?.submissionId === selectedSubmissionId
-      ? pendingDecision.isApproved
+  const activeAction =
+    pendingMutation?.submissionId === selectedSubmissionId
+      ? pendingMutation.action
       : null;
 
   return (
-    <div className="min-h-[100svh] bg-background text-foreground">
+    <div className="flex h-[100svh] flex-col overflow-hidden bg-background text-foreground">
       <a
         href="#admin-main"
-        className="focus-ring sr-only z-50 rounded-lg bg-primary px-4 py-3 text-primary-foreground focus:fixed focus:left-4 focus:top-4 focus:not-sr-only"
+        className="focus-ring sr-only z-50 rounded-md bg-primary px-4 py-3 text-primary-foreground focus:fixed focus:left-4 focus:top-4 focus:not-sr-only"
       >
-        Skip to Content
+        Skip to content
       </a>
 
-      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-[1360px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <header className="shrink-0 border-b border-border">
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
             aria-label="Back to CWRU.WTF home"
-            className="focus-ring inline-flex min-h-11 items-center gap-3 rounded-lg text-foreground transition-colors hover:text-muted-foreground"
+            className="focus-ring inline-flex min-h-11 items-center gap-3 rounded text-foreground"
           >
-            <span
-              translate="no"
-              className="font-brand text-lg font-semibold text-foreground"
-            >
+            <span translate="no" className="font-brand text-base font-semibold">
               <Wordmark />
             </span>
-            <span aria-hidden="true" className="h-4 w-px bg-border" />
-            <span className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-              Admin
+            <span aria-hidden="true" className="text-border">
+              /
             </span>
+            <span className="text-sm text-muted-foreground">Admin</span>
           </Link>
-
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="hidden min-w-0 max-w-[280px] text-right md:block">
-              <p className="truncate text-body-sm font-medium text-foreground">
-                {admin.name}
-              </p>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                {admin.email} · {admin.role.replace("_", " ")}
-              </p>
-            </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              title={admin.email}
+              className="hidden max-w-48 truncate text-xs text-muted-foreground sm:block"
+            >
+              {admin.name}
+            </span>
             <Button
               onClick={() => signOut({ callbackUrl: "/" })}
-              variant="outline"
-              className="h-10 rounded-xl border-border bg-background px-3 text-foreground hover:bg-muted hover:text-foreground sm:px-4"
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 rounded-md"
               aria-label="Sign out of the admin dashboard"
+              title="Sign out"
             >
               <LogOut aria-hidden="true" className="h-4 w-4" />
-              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
@@ -394,81 +464,69 @@ export default function AdminDashboard({
 
       <main
         id="admin-main"
-        className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+        tabIndex={-1}
+        className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col outline-none lg:px-8"
       >
-        <section
-          aria-labelledby="applications-heading"
-          className="flex items-baseline justify-between gap-4"
+        <div
+          className={cn(
+            "shrink-0 px-4 sm:px-6 lg:px-0",
+            hasSelectedSubmission && "hidden lg:block",
+          )}
         >
-          <h1
-            id="applications-heading"
-            className="font-brand text-2xl font-semibold tracking-[-0.02em] text-foreground"
-          >
-            Applications
-            <span className="ml-3 font-mono text-body-sm font-normal tabular-nums text-muted-foreground">
-              {stats.pending === 0
-                ? "inbox clear"
-                : numberFormatter.format(stats.pending) + " to review"}
-            </span>
-          </h1>
-
-          <button
-            type="button"
-            onClick={refreshSubmissions}
-            disabled={isRefreshing || pendingDecision !== null}
-            className="focus-ring -mr-2 inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-2 text-body-sm text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          >
-            {isRefreshing ? (
-              <LoaderCircle
+          <div className="flex h-[72px] items-center justify-between gap-4">
+            <h1
+              id="applications-heading"
+              tabIndex={-1}
+              className="focus-ring rounded text-xl font-semibold tracking-tight"
+            >
+              Applications
+            </h1>
+            <Button
+              onClick={refreshSubmissions}
+              variant="ghost"
+              disabled={isRefreshing || pendingMutation !== null}
+              aria-busy={isRefreshing}
+              className="h-11 rounded-md px-3 text-xs"
+            >
+              <RefreshCw
                 aria-hidden="true"
-                className="h-4 w-4 animate-spin"
+                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
-            ) : (
-              <RefreshCw aria-hidden="true" className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">
               {isRefreshing ? "Refreshing…" : "Refresh"}
-            </span>
-          </button>
-        </section>
+            </Button>
+          </div>
 
-        <section
-          aria-label="Application review workspace"
-          className="mt-5 border-t border-border lg:flex lg:h-[calc(100svh-11.5rem)] lg:min-h-[520px] lg:flex-col"
-        >
-          <div
-            className={cn(
-              "flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between",
-              hasSelectedSubmission && "hidden lg:flex",
-            )}
-          >
+          <div className="flex flex-col-reverse gap-2 border-b border-border lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div
-              className="-mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1"
+              className="flex w-full items-center gap-5 overflow-x-auto sm:gap-6 lg:w-auto"
               role="group"
               aria-label="Filter applications by status"
             >
               {filterOptions.map((option) => (
                 <button
+                  id={"submission-filter-" + option.id}
                   key={option.id}
                   type="button"
                   onClick={() => selectFilter(option.id)}
                   aria-pressed={filter === option.id}
                   className={cn(
-                    "focus-ring inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-body-sm transition-colors duration-150",
+                    "focus-ring -mb-px inline-flex min-h-12 shrink-0 items-center gap-2 border-b-2 text-sm",
                     filter === option.id
-                      ? "bg-muted font-medium text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? "border-foreground font-medium text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {option.label}
-                  <span className="font-mono text-xs tabular-nums opacity-60">
-                    {numberFormatter.format(option.count)}
-                  </span>
+                  {option.id === "pending" || option.id === "archive" ? (
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {numberFormatter.format(option.count)}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
 
-            <div className="relative w-full min-w-0 sm:max-w-[260px]">
+            <div className="relative mb-1 w-full lg:w-72">
               <label htmlFor="application-search" className="sr-only">
                 Search applications
               </label>
@@ -484,87 +542,105 @@ export default function AdminDashboard({
                 onChange={(event) => updateSearch(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="Search…"
-                className="h-8 rounded-md border-transparent bg-muted px-9 py-0 text-body-sm"
+                placeholder="Search applications…"
+                className="h-10 rounded-md bg-muted/25 py-2 pl-9 pr-10 text-base lg:h-9 lg:text-sm [&::-webkit-search-cancel-button]:appearance-none"
               />
               {search ? (
                 <button
                   type="button"
                   onClick={() => updateSearch("")}
                   aria-label="Clear application search"
-                  className="focus-ring absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                  className="focus-ring absolute right-0 top-0 flex h-full w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
                 >
                   <X aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               ) : null}
             </div>
           </div>
+        </div>
 
-          {/* The visible count moved into the pagination line, so the queue
-              still announces itself to screen readers on filter and search. */}
-          <p className="sr-only" aria-live="polite">
-            {numberFormatter.format(filteredSubmissions.length)}{" "}
-            {filteredSubmissions.length === 1 ? "application" : "applications"}
-          </p>
+        <section
+          aria-label="Application review workspace"
+          className="flex min-h-0 flex-1 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)]"
+        >
+          <div
+            className={cn(
+              "min-h-0 w-full flex-col",
+              hasSelectedSubmission ? "hidden lg:flex" : "flex",
+            )}
+          >
+            {visibleSubmissions.length === 0 ? (
+              <QueueEmptyState
+                filter={filter}
+                hasSearch={Boolean(deferredQuery)}
+                total={stats.total}
+                archivedTotal={stats.archived}
+                onClearSearch={() => updateSearch("")}
+                onViewArchive={viewArchive}
+                onViewAll={resetView}
+              />
+            ) : (
+              <ul
+                aria-label="Applications"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
+                {visibleSubmissions.map((submission) => (
+                  <li key={submission.id} className="border-b border-border/70">
+                    <SubmissionRow
+                      isSelected={selectedSubmissionId === submission.id}
+                      statusLabel={
+                        filter === "all"
+                          ? getStatusTone(submission.isApproved).label
+                          : filter === "archive"
+                            ? "Previously " +
+                              getStatusTone(submission.isApproved).label
+                            : undefined
+                      }
+                      onSelect={() => setSelectedSubmissionId(submission.id)}
+                      submission={submission}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {filteredSubmissions.length > 0 ? (
+              <QueuePagination
+                pageCount={pageCount}
+                pageIndex={safePageIndex}
+                total={filteredSubmissions.length}
+                onPageChange={changePage}
+              />
+            ) : null}
+            <p className="sr-only" role="status">
+              {filteredSubmissions.length} applications in this view.
+            </p>
+          </div>
 
-          <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.5fr)] lg:border-t lg:border-border">
-            <h2 className="sr-only">Application queue</h2>
-            <div
-              className={cn(
-                "min-h-0 flex-col",
-                hasSelectedSubmission ? "hidden lg:flex" : "flex",
-              )}
-            >
-              {visibleSubmissions.length === 0 ? (
-                <QueueEmptyState
-                  hasNarrowedView={Boolean(deferredQuery) || filter !== "all"}
-                  onReset={resetView}
-                />
-              ) : (
-                <ul className="min-h-0 flex-1 divide-y divide-border/60 lg:overflow-y-auto">
-                  {visibleSubmissions.map((submission) => (
-                    <li key={submission.id}>
-                      <SubmissionRow
-                        isSelected={selectedSubmissionId === submission.id}
-                        onSelect={() => setSelectedSubmissionId(submission.id)}
-                        submission={submission}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {filteredSubmissions.length > 0 ? (
-                <QueuePagination
-                  pageCount={pageCount}
-                  pageIndex={safePageIndex}
-                  total={filteredSubmissions.length}
-                  onPageChange={changePage}
-                />
-              ) : null}
-            </div>
-
-            <div
-              className={cn(
-                "min-h-0 lg:flex lg:border-l lg:border-border",
-                hasSelectedSubmission ? "flex" : "hidden",
-              )}
-            >
-              {selectedSubmission ? (
-                <SubmissionDetail
-                  activeDecision={activeDecision}
-                  decisionsDisabled={pendingDecision !== null || isRefreshing}
-                  headingRef={detailHeadingRef}
-                  nextPendingSubmission={nextPendingSubmission}
-                  onBack={returnToQueue}
-                  onDecision={updateSubmissionStatus}
-                  onReviewNext={reviewNextPending}
-                  submission={selectedSubmission}
-                />
-              ) : (
-                <DetailPlaceholder />
-              )}
-            </div>
+          <div
+            className={cn(
+              "min-h-0 min-w-0 w-full lg:flex lg:border-l lg:border-border",
+              hasSelectedSubmission ? "flex" : "hidden",
+            )}
+          >
+            {selectedSubmission ? (
+              <SubmissionDetail
+                activeAction={activeAction}
+                actionsDisabled={pendingMutation !== null || isRefreshing}
+                headingRef={detailHeadingRef}
+                nextSubmission={nextSubmission}
+                onBack={returnToQueue}
+                onAction={updateSubmission}
+                onNavigate={navigateToSubmission}
+                previousSubmission={previousSubmission}
+                submission={selectedSubmission}
+              />
+            ) : (
+              <div className="flex w-full items-center justify-center p-8 text-sm text-muted-foreground">
+                {visibleSubmissions.length > 0
+                  ? "Select an application to read it."
+                  : "No application selected."}
+              </div>
+            )}
           </div>
         </section>
       </main>
@@ -575,60 +651,54 @@ export default function AdminDashboard({
 function SubmissionRow({
   submission,
   isSelected,
+  statusLabel,
   onSelect,
 }: {
   submission: AdminSubmission;
   isSelected: boolean;
+  statusLabel?: string;
   onSelect: () => void;
 }) {
-  const categories = parseCategories(
-    submission.categories,
-    submission.otherCategory ?? null,
-  );
-  const primaryCategory = categories[0];
-
-  const tone = getStatusTone(submission.isApproved);
-
   return (
     <button
       id={"submission-row-" + submission.id}
+      data-submission-row
       type="button"
       onClick={onSelect}
+      aria-label={
+        submission.name +
+        ", submitted " +
+        formatDateTime(submission.createdAt) +
+        (statusLabel ? ", " + statusLabel : "")
+      }
       aria-current={isSelected ? "true" : undefined}
-      // Rows are clicked constantly, so this only transitions colour -- no
-      // entrance, no movement. See the animation frequency table in the
-      // design-eng skill.
       className={cn(
-        "focus-ring w-full px-4 py-3 text-left transition-colors duration-150",
-        isSelected ? "bg-muted" : "hover:bg-muted/50",
+        "focus-ring w-full border-l-2 px-4 py-4 text-left focus-visible:relative focus-visible:z-10 focus-visible:ring-inset sm:px-5",
+        isSelected
+          ? "border-l-foreground bg-muted/55"
+          : "border-l-transparent hover:bg-muted/30",
       )}
     >
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-1.5 shrink-0 translate-y-[-1px] rounded-full",
-            tone.dotClassName,
-          )}
-        />
-        <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-foreground">
+      <span className="flex min-w-0 items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate text-sm font-medium">
           {submission.name}
         </span>
-        <span className="sr-only">{tone.label}.</span>
         <time
           dateTime={submission.createdAt}
-          className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
+          title={formatDateTime(submission.createdAt)}
+          className="shrink-0 text-xs tabular-nums text-muted-foreground"
         >
           {formatShortDate(submission.createdAt)}
         </time>
       </span>
-
-      <span className="mt-1 line-clamp-1 block break-words pl-3.5 text-xs leading-5 text-muted-foreground">
-        {primaryCategory ? (
-          <span className="text-foreground/70">{primaryCategory} · </span>
-        ) : null}
-        {submission.wtfIdea || "No idea shared yet."}
+      <span className="mt-1.5 line-clamp-2 break-words text-[13px] leading-5 text-muted-foreground">
+        {submission.wtfIdea || "No idea shared."}
       </span>
+      {statusLabel ? (
+        <span className="mt-2 block text-xs text-muted-foreground">
+          {statusLabel}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -636,206 +706,255 @@ function SubmissionRow({
 function SubmissionDetail({
   submission,
   onBack,
-  onDecision,
-  activeDecision,
-  decisionsDisabled,
+  onAction,
+  activeAction,
+  actionsDisabled,
   headingRef,
-  nextPendingSubmission,
-  onReviewNext,
+  previousSubmission,
+  nextSubmission,
+  onNavigate,
 }: {
   submission: AdminSubmission;
   onBack: () => void;
-  onDecision: (submissionId: number, isApproved: boolean) => Promise<void>;
-  activeDecision: boolean | null;
-  decisionsDisabled: boolean;
+  onAction: (submissionId: number, action: SubmissionAction) => Promise<void>;
+  activeAction: SubmissionAction | null;
+  actionsDisabled: boolean;
   headingRef: Ref<HTMLHeadingElement>;
-  nextPendingSubmission: AdminSubmission | null;
-  onReviewNext: () => void;
+  previousSubmission: AdminSubmission | null;
+  nextSubmission: AdminSubmission | null;
+  onNavigate: (submissionId: number) => void;
 }) {
   const categories = parseCategories(
     submission.categories,
     submission.otherCategory ?? null,
   );
   const videoReferenceUrl = getSafeExternalUrl(submission.youtubeLink);
-  const youtubeEmbedUrl = getYouTubeEmbedUrl(videoReferenceUrl ?? undefined);
   const headingId = "submission-detail-" + submission.id;
   const isPending = submission.isApproved === null;
+  const isArchived = submission.archivedAt !== null;
+  const previousSubmissionStateRef = useRef({
+    id: submission.id,
+    status: submission.isApproved,
+  });
+  const detailBodyRef = useRef<HTMLDivElement>(null);
+  const savedStatusRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      if (detailBodyRef.current) {
+        detailBodyRef.current.scrollTop = 0;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [submission.id]);
+
+  useEffect(() => {
+    const previousSubmissionState = previousSubmissionStateRef.current;
+
+    if (
+      previousSubmissionState.id === submission.id &&
+      previousSubmissionState.status !== submission.isApproved &&
+      submission.isApproved !== null
+    ) {
+      savedStatusRef.current?.focus();
+    }
+
+    previousSubmissionStateRef.current = {
+      id: submission.id,
+      status: submission.isApproved,
+    };
+  }, [submission.id, submission.isApproved]);
+
+  const approveButton = (
+    <Button
+      onClick={() => onAction(submission.id, "approve")}
+      disabled={actionsDisabled}
+      aria-busy={activeAction === "approve"}
+      aria-label={"Approve " + submission.name}
+      className="h-11 flex-1 rounded-md px-3 shadow-none active:translate-y-0 active:scale-[0.98] sm:flex-none sm:px-5"
+    >
+      {activeAction === "approve" ? (
+        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+      ) : (
+        <Check aria-hidden="true" className="h-4 w-4" />
+      )}
+      {activeAction === "approve" ? "Approving…" : "Approve"}
+    </Button>
+  );
+
+  const archiveButton = (
+    <Button
+      onClick={() => onAction(submission.id, "archive")}
+      disabled={actionsDisabled}
+      aria-busy={activeAction === "archive"}
+      aria-label={"Archive " + submission.name}
+      title="Archive"
+      variant="ghost"
+      className="h-11 w-11 shrink-0 rounded-md px-0 text-muted-foreground shadow-none active:translate-y-0 active:scale-[0.98] hover:text-foreground sm:w-auto sm:px-4"
+    >
+      {activeAction === "archive" ? (
+        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+      ) : (
+        <ArchiveIcon aria-hidden="true" className="h-4 w-4" />
+      )}
+      <span className="hidden sm:inline">
+        {activeAction === "archive" ? "Archiving…" : "Archive"}
+      </span>
+    </Button>
+  );
 
   return (
     <article
       aria-labelledby={headingId}
-      className="flex min-h-0 w-full scroll-pt-28 scroll-pb-24 flex-col lg:overflow-y-auto"
+      className="relative flex min-h-0 w-full flex-col"
     >
-      <header className="sticky top-16 z-10 border-b border-border bg-background/80 px-5 py-4 backdrop-blur sm:px-6 lg:top-0">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 lg:hidden">
         <button
           type="button"
           onClick={onBack}
-          className="focus-ring -ml-1 mb-3 inline-flex min-h-9 items-center gap-1 rounded-lg pr-2 text-body-sm text-muted-foreground transition-colors duration-150 hover:text-foreground lg:hidden"
+          className="focus-ring inline-flex min-h-12 items-center gap-1 rounded px-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-          Queue
+          Applications
         </button>
+        <ApplicationNavigation
+          disabled={actionsDisabled}
+          previousSubmission={previousSubmission}
+          nextSubmission={nextSubmission}
+          onNavigate={onNavigate}
+        />
+      </div>
 
-        <div className="flex min-w-0 items-baseline gap-3">
-          <h2
-            id={headingId}
-            ref={headingRef}
-            tabIndex={-1}
-            className="focus-ring min-w-0 flex-1 break-words rounded font-brand text-xl font-semibold tracking-[-0.02em] text-foreground"
-          >
-            {submission.name}
-          </h2>
-          <StatusBadge status={submission.isApproved} />
-        </div>
-        <p className="mt-1 font-mono text-xs text-muted-foreground">
-          <time dateTime={submission.createdAt}>
-            {formatDateTime(submission.createdAt)}
-          </time>
-        </p>
-      </header>
+      <ApplicationNavigation
+        disabled={actionsDisabled}
+        previousSubmission={previousSubmission}
+        nextSubmission={nextSubmission}
+        onNavigate={onNavigate}
+        className="pointer-events-none absolute inset-x-0 top-1/2 z-10 hidden -translate-y-1/2 justify-between px-3 lg:flex"
+      />
 
-      <div className="flex-1">
-        <DetailSection title="WTF idea">
-          <p className="break-words whitespace-pre-wrap text-body leading-6 text-foreground">
-            {submission.wtfIdea || "No idea shared yet."}
-          </p>
-        </DetailSection>
-
-        <DetailSection title="Current project">
-          <p className="break-words whitespace-pre-wrap text-body-sm text-foreground">
-            {submission.currentProject || "No project details shared yet."}
-          </p>
-        </DetailSection>
-
-        <DetailSection title="Categories">
-          <div className="flex flex-wrap gap-2">
-            {categories.length > 0 ? (
-              categories.map((category) => (
-                <Badge
-                  key={category}
-                  variant="outline"
-                  className="break-words border-border bg-transparent px-2 py-0.5 text-xs font-normal text-muted-foreground"
-                >
-                  {category}
-                </Badge>
-              ))
-            ) : (
-              <span className="text-body-sm text-muted-foreground">
-                No categories provided.
-              </span>
-            )}
-          </div>
-
-          {submission.interests ? (
-            <p className="mt-3 break-words whitespace-pre-wrap text-body-sm text-muted-foreground">
-              {submission.interests}
-            </p>
-          ) : null}
-        </DetailSection>
-
-        <DetailSection title="Contact">
-          <dl className="grid gap-2 sm:grid-cols-2">
-            <ContactDetail label="Email">
+      <div
+        key={submission.id}
+        ref={detailBodyRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
+      >
+        <div className="mx-auto max-w-[760px] px-5 py-7 sm:px-8 lg:px-16 lg:py-9">
+          <header>
+            <h2
+              id={headingId}
+              ref={headingRef}
+              tabIndex={-1}
+              className="focus-ring break-words rounded font-brand text-2xl font-semibold tracking-tight"
+            >
+              {submission.name}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
               <a
-                className="focus-ring rounded break-all text-link hover:underline"
+                className="focus-ring break-all rounded py-1 underline-offset-4 hover:text-foreground hover:underline"
                 href={"mailto:" + submission.email}
               >
                 {submission.email}
               </a>
-            </ContactDetail>
-
-            <ContactDetail label="WhatsApp">
               {submission.whatsapp ? (
                 <a
-                  className="focus-ring rounded break-all text-link hover:underline"
+                  className="focus-ring break-all rounded py-1 underline-offset-4 hover:text-foreground hover:underline"
                   href={"tel:" + submission.whatsapp}
                 >
                   {submission.whatsapp}
                 </a>
-              ) : (
-                <span className="text-muted-foreground">Not shared</span>
-              )}
-            </ContactDetail>
-          </dl>
-        </DetailSection>
+              ) : null}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Submitted{" "}
+              <time dateTime={submission.createdAt}>
+                {formatDateTime(submission.createdAt)}
+              </time>
+            </p>
+          </header>
 
-        {videoReferenceUrl ? (
-          <DetailSection title="Video" isLast>
-            {youtubeEmbedUrl ? (
-              <div className="aspect-video overflow-hidden rounded-lg border border-border bg-foreground">
-                <iframe
-                  src={youtubeEmbedUrl}
-                  title={submission.name + " YouTube reference"}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  className="h-full w-full"
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              </div>
+          <div className="mt-8 space-y-7">
+            <DetailSection title="Idea">
+              <p className="whitespace-pre-wrap break-words text-[15px] leading-7">
+                {submission.wtfIdea || "No idea shared."}
+              </p>
+            </DetailSection>
+            <DetailSection title="Current project">
+              <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                {submission.currentProject || "No project shared."}
+              </p>
+            </DetailSection>
+            {categories.length > 0 || submission.interests ? (
+              <DetailSection title="Interests">
+                {categories.length > 0 ? (
+                  <p className="break-words text-sm leading-6">
+                    {categories.join(", ")}
+                  </p>
+                ) : null}
+                {submission.interests ? (
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                    {submission.interests}
+                  </p>
+                ) : null}
+              </DetailSection>
             ) : null}
-
-            <a
-              href={videoReferenceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "focus-ring inline-flex items-center gap-1 rounded text-body-sm text-link hover:underline",
-                youtubeEmbedUrl && "mt-3",
-              )}
-            >
-              Open video
-              <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          </DetailSection>
-        ) : null}
+            {videoReferenceUrl ? (
+              <VideoReference url={videoReferenceUrl} name={submission.name} />
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      <footer className="sticky bottom-0 z-10 mt-auto border-t border-border bg-background/80 px-5 py-3 backdrop-blur sm:px-6">
-        {isPending ? (
-          <div className="flex items-center justify-end gap-2">
-            <RejectSubmissionDialog
-              activeDecision={activeDecision}
-              disabled={decisionsDisabled}
-              name={submission.name}
-              onReject={() => onDecision(submission.id, false)}
-            />
+      <footer className="shrink-0 border-t border-border bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 lg:px-6">
+        {isArchived ? (
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground" role="status">
+              Archived · Previously {getStatusTone(submission.isApproved).label}
+            </p>
             <Button
-              onClick={() => onDecision(submission.id, true)}
-              disabled={decisionsDisabled}
-              aria-busy={activeDecision === true}
-              aria-label={"Approve " + submission.name}
-              size="sm"
-              className="h-9 px-4 text-body-sm"
+              onClick={() => onAction(submission.id, "restore")}
+              disabled={actionsDisabled}
+              aria-busy={activeAction === "restore"}
+              variant="outline"
+              className="h-11 rounded-md shadow-none active:translate-y-0 active:scale-[0.98]"
             >
-              {activeDecision === true ? (
+              {activeAction === "restore" ? (
                 <LoaderCircle
                   aria-hidden="true"
                   className="h-4 w-4 animate-spin"
                 />
               ) : (
-                <CheckCheck aria-hidden="true" className="h-4 w-4" />
+                <ArchiveRestore aria-hidden="true" className="h-4 w-4" />
               )}
-              {activeDecision === true ? "Approving…" : "Approve"}
+              {activeAction === "restore" ? "Restoring…" : "Restore"}
             </Button>
           </div>
+        ) : isPending ? (
+          <div className="flex items-center justify-end gap-2">
+            {archiveButton}
+            <WaitlistSubmissionDialog
+              key={submission.id}
+              activeAction={activeAction}
+              disabled={actionsDisabled}
+              name={submission.name}
+              onWaitlist={() => onAction(submission.id, "waitlist")}
+            />
+            {approveButton}
+          </div>
         ) : (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-body-sm text-muted-foreground">
+          <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
+            <p
+              ref={savedStatusRef}
+              tabIndex={-1}
+              className="focus-ring rounded text-sm text-muted-foreground"
+              role="status"
+            >
               {getStatusTone(submission.isApproved).label}
             </p>
-            {nextPendingSubmission ? (
-              <Button
-                onClick={onReviewNext}
-                variant="ghost"
-                size="sm"
-                className="h-9 text-body-sm"
-              >
-                Next pending
-                <ChevronRight aria-hidden="true" className="h-4 w-4" />
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {archiveButton}
+              {submission.isApproved === false ? approveButton : null}
+            </div>
           </div>
         )}
       </footer>
@@ -843,62 +962,161 @@ function SubmissionDetail({
   );
 }
 
-function RejectSubmissionDialog({
+function ApplicationNavigation({
+  previousSubmission,
+  nextSubmission,
+  onNavigate,
+  disabled,
+  className,
+}: {
+  previousSubmission: AdminSubmission | null;
+  nextSubmission: AdminSubmission | null;
+  onNavigate: (submissionId: number) => void;
+  disabled: boolean;
+  className?: string;
+}) {
+  if (!previousSubmission && !nextSubmission) {
+    return null;
+  }
+
+  return (
+    <nav
+      aria-label="Browse applications"
+      className={cn("flex items-center gap-1", className)}
+    >
+      <ApplicationNavigationButton
+        direction="previous"
+        disabled={disabled}
+        submission={previousSubmission}
+        onNavigate={onNavigate}
+      />
+      <ApplicationNavigationButton
+        direction="next"
+        disabled={disabled}
+        submission={nextSubmission}
+        onNavigate={onNavigate}
+      />
+    </nav>
+  );
+}
+
+function ApplicationNavigationButton({
+  direction,
+  submission,
+  onNavigate,
+  disabled,
+}: {
+  direction: "previous" | "next";
+  submission: AdminSubmission | null;
+  onNavigate: (submissionId: number) => void;
+  disabled: boolean;
+}) {
+  const isPrevious = direction === "previous";
+  const directionLabel = isPrevious ? "Previous" : "Next";
+  const label = submission
+    ? directionLabel + " application: " + submission.name
+    : "No " + direction + " application";
+
+  return (
+    <button
+      type="button"
+      onClick={() => submission && onNavigate(submission.id)}
+      disabled={disabled || !submission}
+      aria-label={label}
+      title={label}
+      className="focus-ring pointer-events-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-background/95 text-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
+    >
+      {isPrevious ? (
+        <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+      ) : (
+        <ArrowRight aria-hidden="true" className="h-4 w-4" />
+      )}
+    </button>
+  );
+}
+
+function VideoReference({ url, name }: { url: string; name: string }) {
+  const embedUrl = getYouTubeEmbedUrl(url);
+
+  return (
+    <DetailSection title="Video">
+      {embedUrl ? (
+        <iframe
+          src={embedUrl}
+          title={name + " YouTube reference"}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="block aspect-video w-full rounded-md border border-border"
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      ) : null}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          "focus-ring flex min-h-11 w-fit items-center gap-1 rounded text-sm text-muted-foreground hover:text-foreground hover:underline",
+          embedUrl && "mt-2",
+        )}
+      >
+        Open video
+        <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+        <span className="sr-only"> (opens in a new tab)</span>
+      </a>
+    </DetailSection>
+  );
+}
+
+function WaitlistSubmissionDialog({
   name,
   disabled,
-  activeDecision,
-  onReject,
+  activeAction,
+  onWaitlist,
 }: {
   name: string;
   disabled: boolean;
-  activeDecision: boolean | null;
-  onReject: () => Promise<void>;
+  activeAction: SubmissionAction | null;
+  onWaitlist: () => Promise<void>;
 }) {
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
         <Button
           disabled={disabled}
-          aria-busy={activeDecision === false}
-          aria-label={"Reject " + name}
-          variant="ghost"
-          size="sm"
-          className="h-9 px-4 text-body-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
+          aria-busy={activeAction === "waitlist"}
+          aria-label={"Move " + name + " to the waitlist"}
+          variant="outline"
+          className="h-11 flex-1 rounded-md px-3 shadow-none active:translate-y-0 active:scale-[0.98] sm:flex-none sm:px-5"
         >
-          {activeDecision === false ? (
+          {activeAction === "waitlist" ? (
             <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
-          ) : (
-            <XCircle aria-hidden="true" className="h-4 w-4" />
-          )}
-          {activeDecision === false ? "Rejecting…" : "Reject"}
+          ) : null}
+          {activeAction === "waitlist" ? "Moving…" : "Waitlist"}
         </Button>
       </AlertDialog.Trigger>
-
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-foreground/20 duration-150 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <AlertDialog.Content className="focus-ring fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overscroll-contain rounded-xl border border-border bg-background p-5 shadow-lg ease-[cubic-bezier(0.23,1,0.32,1)] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:duration-150 data-[state=open]:duration-200">
-          <AlertDialog.Title className="text-pretty font-brand text-base font-semibold text-foreground">
-            Reject {name}?
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/25" />
+        <AlertDialog.Content className="focus-ring fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-6 shadow-lg">
+          <AlertDialog.Title className="text-lg font-semibold tracking-tight">
+            Move to the waitlist?
           </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 break-words text-body-sm text-muted-foreground">
-            This is recorded immediately and moves them out of the pending
-            queue.
+          <AlertDialog.Description className="mt-2 break-words text-sm leading-6 text-muted-foreground">
+            {name} will remain available in Waitlist and can be approved later.
           </AlertDialog.Description>
-
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="mt-6 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
-              <Button variant="ghost" size="sm" className="h-9 text-body-sm">
+              <Button variant="outline" className="h-11 rounded-md shadow-none">
                 Cancel
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
               <Button
-                onClick={() => void onReject()}
-                variant="destructive"
-                size="sm"
-                className="h-9 text-body-sm"
+                onClick={() => void onWaitlist()}
+                disabled={disabled}
+                className="h-11 rounded-md shadow-none"
               >
-                Reject
+                Move to waitlist
               </Button>
             </AlertDialog.Action>
           </div>
@@ -908,95 +1126,99 @@ function RejectSubmissionDialog({
   );
 }
 
-function StatusBadge({ status }: { status: boolean | null }) {
-  const tone = getStatusTone(status);
-
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-body-sm",
-        tone.textClassName,
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn("size-1.5 rounded-full", tone.dotClassName)}
-      />
-      {tone.label}
-    </span>
-  );
-}
-
 function DetailSection({
   title,
   children,
-  isLast = false,
 }: {
   title: string;
   children: ReactNode;
-  isLast?: boolean;
 }) {
   return (
-    <section
-      className={cn(
-        "px-5 py-4 sm:px-6",
-        !isLast && "border-b border-border/60",
-      )}
-    >
-      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-      <div className="mt-2">{children}</div>
+    <section>
+      <h3 className="mb-2 font-brand text-xs font-semibold text-muted-foreground">
+        {title}
+      </h3>
+      {children}
     </section>
   );
 }
 
-function ContactDetail({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="sr-only">{label}</dt>
-      <dd className="min-w-0 text-body-sm text-foreground">{children}</dd>
-    </div>
-  );
-}
-
 function QueueEmptyState({
-  hasNarrowedView,
-  onReset,
+  filter,
+  hasSearch,
+  total,
+  archivedTotal,
+  onClearSearch,
+  onViewArchive,
+  onViewAll,
 }: {
-  hasNarrowedView: boolean;
-  onReset: () => void;
+  filter: SubmissionFilter;
+  hasSearch: boolean;
+  total: number;
+  archivedTotal: number;
+  onClearSearch: () => void;
+  onViewArchive: () => void;
+  onViewAll: () => void;
 }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <p className="text-body-sm text-muted-foreground">
-        {hasNarrowedView ? "Nothing matches." : "No applications yet."}
-      </p>
-      {hasNarrowedView ? (
-        <Button
-          type="button"
-          onClick={onReset}
-          variant="ghost"
-          size="sm"
-          className="mt-2 text-body-sm"
-        >
-          Show all
-        </Button>
-      ) : null}
-    </div>
-  );
-}
+  let title = filter === "archive" ? "Archive is empty" : "No applications";
+  let description = "New applications will appear here.";
 
-function DetailPlaceholder() {
+  if (hasSearch) {
+    title = filter === "archive" ? "No matches in Archive" : "No matches";
+    description = "Try another name, email, or idea.";
+  } else if (filter === "pending") {
+    title = "No pending applications";
+    description = "New applications will appear here for review.";
+  } else if (filter === "approved") {
+    title = "No approved applications";
+    description = "Approved applications will appear here.";
+  } else if (filter === "waitlist") {
+    title = "No waitlisted applications";
+    description = "Applications moved to the waitlist will appear here.";
+  } else if (filter === "archive") {
+    description = "Archived applications will appear here.";
+  } else if (total === 0) {
+    title = "No active applications";
+    description =
+      archivedTotal > 0
+        ? "All current applications are in the archive."
+        : description;
+  }
+
   return (
-    <div className="flex min-h-full w-full items-center justify-center px-6 py-16 text-center">
-      <p className="text-body-sm text-muted-foreground">
-        Select an application to review it.
-      </p>
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="flex min-h-full flex-col items-center justify-center px-6 py-12 text-center">
+        <Inbox aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
+        <h2 className="mt-4 text-sm font-medium">{title}</h2>
+        <p className="mt-2 max-w-64 text-[13px] leading-5 text-muted-foreground">
+          {description}
+        </p>
+        {hasSearch ? (
+          <Button
+            onClick={onClearSearch}
+            variant="ghost"
+            className="mt-3 h-11 rounded-md text-xs"
+          >
+            Clear search
+          </Button>
+        ) : total > 0 && filter !== "all" ? (
+          <Button
+            onClick={onViewAll}
+            variant="ghost"
+            className="mt-3 h-11 rounded-md text-xs"
+          >
+            View all applications
+          </Button>
+        ) : filter !== "archive" && total === 0 && archivedTotal > 0 ? (
+          <Button
+            onClick={onViewArchive}
+            variant="ghost"
+            className="mt-3 h-11 rounded-md text-xs"
+          >
+            View archive
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1018,50 +1240,78 @@ function QueuePagination({
   return (
     <nav
       aria-label="Application queue pages"
-      className="flex items-center justify-between gap-3 border-t border-border px-4 py-2"
+      className="flex min-h-[69px] shrink-0 items-center justify-between gap-3 border-t border-border px-4 sm:px-5"
     >
       <p
-        className="font-mono text-xs tabular-nums text-muted-foreground"
+        className="text-xs tabular-nums text-muted-foreground"
         aria-live="polite"
       >
         {numberFormatter.format(rangeStart)}–{numberFormatter.format(rangeEnd)}{" "}
         of {numberFormatter.format(total)}
         <span className="sr-only">
-          . Page {numberFormatter.format(pageIndex + 1)} of{" "}
-          {numberFormatter.format(pageCount)}.
+          {" "}
+          applications. Page {pageIndex + 1} of {pageCount}.
         </span>
       </p>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          disabled={pageIndex === 0}
-          onClick={() => onPageChange(pageIndex - 1)}
-          aria-label="Previous page"
-          className="size-8"
-        >
-          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          disabled={pageIndex >= pageCount - 1}
-          onClick={() => onPageChange(pageIndex + 1)}
-          aria-label="Next page"
-          className="size-8"
-        >
-          <ChevronRight aria-hidden="true" className="h-4 w-4" />
-        </Button>
-      </div>
+      {pageCount > 1 ? (
+        <div className="flex items-center">
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled={pageIndex === 0}
+            onClick={() => onPageChange(pageIndex - 1)}
+            aria-label="Previous page"
+            className="h-11 w-11 rounded-md"
+          >
+            <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled={pageIndex >= pageCount - 1}
+            onClick={() => onPageChange(pageIndex + 1)}
+            aria-label="Next page"
+            className="h-11 w-11 rounded-md"
+          >
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
     </nav>
+  );
+}
+
+function submissionMatchesView(
+  submission: AdminSubmission,
+  filter: SubmissionFilter,
+  normalizedSearch: string,
+) {
+  const isArchived = submission.archivedAt !== null;
+
+  if (filter === "archive") {
+    if (!isArchived) return false;
+  } else {
+    if (isArchived) return false;
+
+    if (filter === "pending" && submission.isApproved !== null) return false;
+    if (filter === "approved" && submission.isApproved !== true) return false;
+    if (filter === "waitlist" && submission.isApproved !== false) return false;
+  }
+
+  return (
+    normalizedSearch.length === 0 ||
+    buildSearchBlob(submission).includes(normalizedSearch)
   );
 }
 
 function getSubmissionStats(submissions: AdminSubmission[]) {
   return submissions.reduce(
     (accumulator, submission) => {
+      if (submission.archivedAt !== null) {
+        accumulator.archived += 1;
+        return accumulator;
+      }
+
       accumulator.total += 1;
 
       if (submission.isApproved === null) {
@@ -1069,16 +1319,17 @@ function getSubmissionStats(submissions: AdminSubmission[]) {
       } else if (submission.isApproved) {
         accumulator.approved += 1;
       } else {
-        accumulator.rejected += 1;
+        accumulator.waitlist += 1;
       }
 
       return accumulator;
     },
     {
       approved: 0,
+      archived: 0,
       pending: 0,
-      rejected: 0,
       total: 0,
+      waitlist: 0,
     },
   );
 }
@@ -1089,7 +1340,7 @@ function getStatusTone(status: boolean | null) {
   }
 
   if (status === false) {
-    return statusCopy.rejected;
+    return statusCopy.waitlist;
   }
 
   return statusCopy.pending;

@@ -25,6 +25,7 @@ export default async function AdminPage() {
   const serializedSubmissions: AdminSubmission[] = initialSubmissions.map(
     (submission) => ({
       ...submission,
+      archivedAt: submission.archivedAt?.toISOString() ?? null,
       createdAt: submission.createdAt.toISOString(),
       updatedAt: submission.updatedAt.toISOString(),
     })

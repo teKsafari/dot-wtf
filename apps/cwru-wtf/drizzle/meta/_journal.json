@@ -43,6 +43,13 @@
       "when": 1771775224194,
       "tag": "0005_productive_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789686894904,
+      "tag": "0006_strong_zemo",
+      "breakpoints": true
     }
   ]
 }

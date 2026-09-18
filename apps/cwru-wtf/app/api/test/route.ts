@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
+import { isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { submissions } from '@/lib/schema';
 
 export async function GET() {
   try {
     // Test database connection and schema
-    const testSubmissions = await db.select().from(submissions).limit(5);
+    const testSubmissions = await db
+      .select()
+      .from(submissions)
+      .where(isNull(submissions.archivedAt))
+      .limit(5);
     
     return NextResponse.json({
       status: 'OK',
