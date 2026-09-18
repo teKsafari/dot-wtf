@@ -6,7 +6,7 @@ import PeekCat from "@/components/peek-cat"
 import TopCat from "@/components/top-cat"
 import WtfMeanings from "@/components/wtf-meanings"
 import Wordmark from "@/components/wordmark"
-import SubmissionForm from "@/components/submission-form"
+import TallyApplicationForm from "@/components/tally-application-form"
 import SiteNav from "@/components/site-nav"
 import clubCat from "@/public/cat-i-am.png"
 
@@ -92,21 +92,8 @@ export default function Home() {
       </section>
 
       {/* Join */}
-      <section id="join" className="screen-line-after py-20 md:py-28">
-        <div className="mx-auto max-w-content text-center">
-          <p className="font-mono text-caption uppercase tracking-[0.2em] text-muted-foreground">
-            Join us
-          </p>
-          <h2 className="mt-4 font-brand text-page-title text-foreground">
-            Come create something
-          </h2>
-          <p className="mt-5 text-pretty font-primary text-body text-muted-foreground md:text-lg">
-            Tell us what you&apos;re into and what you want to make. We read
-            every submission.
-          </p>
-        </div>
-
-        <SubmissionForm />
+      <section id="join" aria-label="Join CWRU.WTF" className="screen-line-after py-20 md:py-28">
+        <TallyApplicationForm />
       </section>
 
       {/* Footer */}

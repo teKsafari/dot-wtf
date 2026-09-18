@@ -1,7 +1,14 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
-  "globalEnv": ["DATABASE_URL", "JWT_SECRET", "AUTH_SECRET"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "AUTH_SECRET",
+    "TALLY_FORM_ID",
+    "TALLY_WEBHOOK_SECRET",
+    "TALLY_FIELD_KEYS"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

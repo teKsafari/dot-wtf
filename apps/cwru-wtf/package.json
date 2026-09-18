@@ -11,7 +11,9 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "create-admin": "npx tsx scripts/create-admin.ts",
-    "migrate-database": "node scripts/run-migrate-database.js"
+    "migrate-database": "node scripts/run-migrate-database.js",
+    "tally:export": "tsx scripts/export-tally-migration.ts",
+    "test:tally": "tsx --test scripts/tally-webhook.test.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.10.0",
