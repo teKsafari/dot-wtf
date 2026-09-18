@@ -27,11 +27,12 @@ export default function Home() {
 
         <p className="mt-6 max-w-[52ch] text-pretty font-primary text-body text-muted-foreground md:text-lg">
           A student-led collective of{" "}
-          <span className="vibe text-foreground">dreamers</span>,{" "}
           <span className="vibe text-foreground">builders</span>,{" "}
+           <span className="vibe text-foreground">researchers</span>,{" "}
           <span className="vibe text-foreground">tinkerers</span>,{" "}
           <span className="vibe text-foreground">artists</span>,{" "}
-          <span className="vibe text-foreground">hackers</span>, etc...
+           <span className="vibe text-foreground">engineers</span>,{" "}
+          <span className="vibe text-foreground">hackers</span>, et al...
           encouraging interdisciplinary collaborations among members of the CWRU
           community.
         </p>
