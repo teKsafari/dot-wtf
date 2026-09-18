@@ -7,6 +7,7 @@ import TopCat from "@/components/top-cat"
 import WtfMeanings from "@/components/wtf-meanings"
 import Wordmark from "@/components/wordmark"
 import SubmissionForm from "@/components/submission-form"
+import SiteNav from "@/components/site-nav"
 import clubCat from "@/public/cat-i-am.png"
 
 
@@ -14,6 +15,8 @@ import clubCat from "@/public/cat-i-am.png"
 export default function Home() {
   return (
     <div className="mx-auto w-full max-w-[1160px] px-6">
+      <SiteNav />
+
       {/* Hero */}
       <section className="relative flex min-h-[100svh] flex-col items-center justify-center py-20 text-center">
         <h1 className="animate-fade-in-up font-brand text-display text-foreground">
@@ -106,7 +109,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="flex flex-col items-center gap-3 py-10 sm:flex-row sm:justify-between">
+      <footer className="flex flex-col items-center gap-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-10 sm:flex-row sm:justify-between sm:py-10">
         <span className="font-brand text-lg font-semibold text-foreground">
           <Wordmark />
         </span>
