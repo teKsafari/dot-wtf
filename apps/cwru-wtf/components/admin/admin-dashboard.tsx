@@ -845,7 +845,7 @@ function SubmissionDetail({
               id={headingId}
               ref={headingRef}
               tabIndex={-1}
-              className="focus-ring break-words rounded font-brand text-2xl font-semibold tracking-tight"
+              className="focus-ring break-words rounded font-nunito text-2xl font-semibold tracking-tight"
             >
               {submission.name}
             </h2>
@@ -1135,7 +1135,7 @@ function DetailSection({
 }) {
   return (
     <section>
-      <h3 className="mb-2 font-brand text-xs font-semibold text-muted-foreground">
+      <h3 className="mb-2 font-nunito text-xs font-semibold text-muted-foreground">
         {title}
       </h3>
       {children}
