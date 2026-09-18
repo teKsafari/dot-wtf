@@ -50,6 +50,13 @@
       "when": 1789686894904,
       "tag": "0006_strong_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789745286357,
+      "tag": "0007_parched_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

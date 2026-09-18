@@ -1,0 +1,2 @@
+ALTER TABLE "submissions" ADD COLUMN "tally_submission_id" text;--> statement-breakpoint
+ALTER TABLE "submissions" ADD CONSTRAINT "submissions_tally_submission_id_unique" UNIQUE("tally_submission_id");
