@@ -1,7 +1,6 @@
 "use client"
 
 import Script from "next/script"
-import Image from "next/image"
 import { ArrowUpRight } from "lucide-react"
 
 const formUrl = "https://tally.so/r/lbp7OX"
@@ -16,13 +15,6 @@ declare global {
 export default function TallyApplicationForm() {
   return (
     <div className="mx-auto w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#121211] p-5 sm:p-10">
-      <Image
-        src="/klariti-mark.svg"
-        alt="Klariti"
-        width={41}
-        height={48}
-        className="mb-6 ml-2 h-12 w-auto"
-      />
       <iframe
         src={embedUrl}
         loading="eager"
