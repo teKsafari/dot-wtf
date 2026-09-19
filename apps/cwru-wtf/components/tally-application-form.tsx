@@ -14,7 +14,7 @@ declare global {
 
 export default function TallyApplicationForm() {
   return (
-    <div className="mx-auto w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#121211] p-5 sm:p-10">
+    <div className="mx-auto w-full max-w-[700px] corner-squircle overflow-hidden rounded-xl bg-[#121211] p-5 sm:p-10">
       <iframe
         src={embedUrl}
         loading="eager"
