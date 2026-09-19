@@ -3,7 +3,7 @@
 import Script from "next/script"
 import { ArrowUpRight } from "lucide-react"
 
-const formUrl = "https://tally.so/r/lbp7OX"
+const formUrl = "https://forms.teksafari.com/join-dot-wtf"
 const embedUrl = "https://tally.so/embed/lbp7OX?alignLeft=1&dynamicHeight=1"
 
 declare global {
