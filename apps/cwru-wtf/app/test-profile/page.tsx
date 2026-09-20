@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import Wordmark from "@/components/wordmark"
+import { tekidProfilePath } from "@/lib/tekid/config"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 import { getTekidAuthContext } from "@/lib/tekid/server"
 import { signInWithTekid, signOutFromTekid } from "./actions"
@@ -27,6 +29,12 @@ export default async function TestProfilePage({
     }),
     searchParams,
   ])
+
+  // A retried callback can leave an error flag after a session was established.
+  if (!(auth instanceof TekidProfileContractError) && auth.isAuthenticated && params.error === "sign-in") {
+    redirect(tekidProfilePath)
+  }
+
   const errorMessage =
     params.error === "sign-in"
       ? "We couldn’t complete your sign-in. Please try again."
