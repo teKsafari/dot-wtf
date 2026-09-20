@@ -7,6 +7,7 @@ import TopCat from "@/components/top-cat"
 import WtfMeanings from "@/components/wtf-meanings"
 import Wordmark from "@/components/wordmark"
 import TallyApplicationForm from "@/components/tally-application-form"
+import SiteFooter from "@/components/site-footer"
 import SiteNav from "@/components/site-nav"
 import clubCat from "@/public/cat-i-am.png"
 
@@ -96,28 +97,7 @@ export default function Home() {
         <TallyApplicationForm />
       </section>
 
-      {/* Footer */}
-      <footer className="flex flex-col items-center gap-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-14 sm:flex-row sm:justify-between sm:pb-20 sm:pt-14">
-        <div className="flex flex-col items-center gap-1 sm:items-start">
-          <span className="font-brand text-lg font-semibold text-foreground">
-            <Wordmark />
-          </span>
-          <span className="font-mono text-caption text-muted-foreground">
-            Powered by{" "}
-            <a
-              href="https://teksafari.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="focus-ring rounded-sm text-foreground underline underline-offset-4 transition-colors hover:text-muted-foreground"
-            >
-              teKsafari
-            </a>
-          </span>
-        </div>
-        <span className="font-mono text-caption text-muted-foreground">
-          &copy; {new Date().getFullYear()} &mdash; We Tinker Fearlessly
-        </span>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }
