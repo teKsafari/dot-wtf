@@ -50,8 +50,8 @@ export default async function TestProfilePage({
                 Your profile needs attention
               </h1>
               <p role="alert" className="mt-3 text-sm text-muted-foreground">
-                {auth.field === "name" || auth.field === "username" || auth.field === "email"
-                  ? `Check that your tekID profile has a ${auth.field === "email" ? "valid email address" : auth.field}, then sign in again.`
+                {auth.field === "name" || auth.field === "email"
+                  ? `Check that your tekID profile has a ${auth.field === "email" ? "valid email address" : "display name"}, then sign in again.`
                   : "We couldn’t load the required profile details from tekID. Check your profile, then sign in again."}
               </p>
               <a

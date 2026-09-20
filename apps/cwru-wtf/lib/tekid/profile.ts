@@ -1,16 +1,16 @@
-import type { AuthContextType, AuthSession } from './types';
+import type { AuthContextType, AuthSession, RequiredProfileClaim } from './types';
 
 type ProfileClaims = Partial<Record<keyof AuthSession, unknown>>;
 
 export class TekidProfileContractError extends Error {
-  constructor(readonly field: keyof AuthSession | 'claims') {
+  constructor(readonly field: RequiredProfileClaim | 'claims') {
     // Keep profile values and tokens out of error messages.
     super(`tekID profile contract requires a valid ${field}`);
     this.name = 'TekidProfileContractError';
   }
 }
 
-function requiredText(value: unknown, field: 'sub' | 'name' | 'username' | 'email'): string {
+function requiredText(value: unknown, field: 'sub' | 'name' | 'email'): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new TekidProfileContractError(field);
   }
@@ -26,12 +26,12 @@ function requiredBoolean(value: unknown): boolean {
   return value;
 }
 
-function profileText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+function optionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
 }
 
 function profilePicture(value: unknown): string | null {
-  const picture = profileText(value);
+  const picture = optionalText(value);
   if (!picture) return null;
 
   try {
@@ -57,7 +57,7 @@ export function getTekidAuthContextFromClaims(
     claims: {
       sub: requiredText(claims.sub, 'sub'),
       name: requiredText(claims.name, 'name'),
-      username: requiredText(claims.username, 'username'),
+      username: optionalText(claims.username),
       email: requiredText(claims.email, 'email'),
       email_verified: requiredBoolean(claims.email_verified),
       picture: profilePicture(claims.picture),

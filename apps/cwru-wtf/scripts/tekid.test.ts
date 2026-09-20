@@ -74,7 +74,7 @@ test('only a signed-out session produces the signed-out context', () => {
 });
 
 test('every required text claim must be a nonblank string', () => {
-  for (const field of ['sub', 'name', 'username', 'email'] as const) {
+  for (const field of ['sub', 'name', 'email'] as const) {
     for (const value of [undefined, null, '', '  ', 42, false, {}, []]) {
       assert.throws(
         () => getTekidAuthContextFromClaims(true, { ...completeClaims, [field]: value }),
@@ -100,12 +100,14 @@ test('email verification is a required boolean and false remains valid', () => {
   }
 });
 
-// tsc checks that the discriminant alone makes all five fields non-nullable.
+// tsc checks that the discriminant alone makes the required fields non-nullable.
 function consumeAuthContext({ isAuthenticated, claims }: AuthContextType) {
   if (isAuthenticated) {
-    const fields: [string, string, string, string, boolean] = [
-      claims.sub, claims.name, claims.username, claims.email, claims.email_verified,
+    const fields: [string, string, string, boolean] = [
+      claims.sub, claims.name, claims.email, claims.email_verified,
     ];
+    // @ts-expect-error Authentication does not guarantee an assigned username.
+    const requiredUsername: string = claims.username;
     return fields;
   }
   const signedOutClaims: null = claims;
@@ -114,9 +116,38 @@ function consumeAuthContext({ isAuthenticated, claims }: AuthContextType) {
 
 test('consumers narrow the complete contract with isAuthenticated alone', () => {
   assert.deepEqual(consumeAuthContext(getTekidAuthContextFromClaims(true, completeClaims)), [
-    'member-subject', 'Ada Lovelace', 'ada', 'ada@example.org', true,
+    'member-subject', 'Ada Lovelace', 'ada@example.org', true,
   ]);
   assert.equal(consumeAuthContext(getTekidAuthContextFromClaims(false, null)), null);
+});
+
+test('an unassigned or malformed username does not block an authenticated profile', () => {
+  const { username: _username, ...withoutUsername } = completeClaims;
+  for (const claims of [
+    withoutUsername,
+    ...[undefined, null, '', ' ', {}, 42, false, []].map((username) => ({
+      ...completeClaims, username,
+    })),
+  ]) {
+    const context = getTekidAuthContextFromClaims(true, claims);
+    assert.equal(context.isAuthenticated, true);
+    if (!context.isAuthenticated) assert.fail('Expected an authenticated profile');
+    assert.equal(context.claims.name, 'Ada Lovelace');
+    assert.equal(context.claims.username, null);
+    assert.deepEqual(consumeAuthContext(context), [
+      'member-subject', 'Ada Lovelace', 'ada@example.org', true,
+    ]);
+  }
+});
+
+test('an assigned username is distinct from the required display name', () => {
+  const context = getTekidAuthContextFromClaims(true, completeClaims);
+  assert.equal(context.claims?.name, 'Ada Lovelace');
+  assert.equal(context.claims?.username, 'ada');
+  assert.throws(
+    () => getTekidAuthContextFromClaims(true, { ...completeClaims, name: undefined }),
+    (error) => error instanceof TekidProfileContractError && error.field === 'name'
+  );
 });
 
 test('missing or malformed optional photos become null', () => {
@@ -145,9 +176,9 @@ test('contract errors identify the field without exposing profile values', () =>
   assert.throws(
     () => getTekidAuthContextFromClaims(true, {
       ...completeClaims,
-      username: { private: 'private-profile-value' },
+      name: { private: 'private-profile-value' },
     }),
     (error) => error instanceof TekidProfileContractError &&
-      error.message.includes('username') && !error.message.includes('private-profile-value')
+      error.message.includes('name') && !error.message.includes('private-profile-value')
   );
 });
