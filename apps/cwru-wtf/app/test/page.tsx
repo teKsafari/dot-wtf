@@ -2,10 +2,11 @@ import Link from 'next/link';
 import { ArrowLeft, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { env } from '@/env';
 
 async function getTestData() {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/test`, {
+    const response = await fetch(`${env.LOGTO_BASE_URL}/api/test`, {
       cache: 'no-store'
     });
     
@@ -145,7 +146,7 @@ export default async function TestPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Environment:</span>
-                  <span>{process.env.NODE_ENV}</span>
+                  <span>{env.NODE_ENV}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Database:</span>

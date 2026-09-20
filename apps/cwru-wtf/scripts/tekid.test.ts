@@ -1,75 +1,34 @@
+import { testEnvironment } from './test-env';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { createApplicationEnv } from '../lib/env-schema';
 import { getTekidConfig } from '../lib/tekid/config';
 import { getTekidAuthContextFromClaims, TekidProfileContractError } from '../lib/tekid/profile';
 import type { AuthContextType } from '../lib/tekid/types';
 
-const environment: NodeJS.ProcessEnv = {
-  NODE_ENV: 'test',
-  LOGTO_APP_ID: 'test-app',
-  LOGTO_APP_SECRET: 'test-app-secret',
-  LOGTO_BASE_URL: 'http://dot-wtf.localhost:1355',
-  LOGTO_COOKIE_SECRET: 'test-cookie-secret-at-least-32-characters',
-};
-
 test('config keeps the public origin and requests email for the session contract', () => {
-  const local = getTekidConfig(environment);
+  const local = getTekidConfig(createApplicationEnv(testEnvironment));
   assert.equal(local.baseUrl, 'http://dot-wtf.localhost:1355');
   assert.equal(local.endpoint, 'https://id.teksafari.org/');
   assert.equal(local.cookieSecure, false);
   assert.deepEqual(local.scopes, ['email']);
 
-  const production = getTekidConfig({
-    ...environment,
+  const production = getTekidConfig(createApplicationEnv({
+    ...testEnvironment,
     NODE_ENV: 'production',
     LOGTO_BASE_URL: 'https://cwru.wtf/',
-  });
+  }));
   assert.equal(production.baseUrl, 'https://cwru.wtf');
   assert.equal(production.cookieSecure, true);
 });
 
-test('config fails clearly for absent credentials or an undersized cookie key', () => {
-  for (const key of [
-    'LOGTO_APP_ID',
-    'LOGTO_APP_SECRET',
-    'LOGTO_BASE_URL',
-    'LOGTO_COOKIE_SECRET',
-  ]) {
-    assert.throws(
-      () => getTekidConfig({ ...environment, [key]: undefined }),
-      new RegExp(`Missing required tekID environment variable: ${key}`)
-    );
-  }
-
-  assert.throws(
-    () => getTekidConfig({ ...environment, LOGTO_COOKIE_SECRET: 'x'.repeat(31) }),
-    /LOGTO_COOKIE_SECRET must contain at least 32 characters/
-  );
-});
-
-test('config rejects origins that can change the intended callback or expose secrets', () => {
-  for (const baseUrl of [
-    '/relative',
-    'javascript:alert(1)',
-    'https://user:password@cwru.wtf',
-    'https://cwru.wtf/test-profile',
-    'https://cwru.wtf?next=https://example.org',
-    'https://cwru.wtf#fragment',
-    'https://cwru.wtf/../',
-    ' https://cwru.wtf',
-    'https:\\cwru.wtf',
-  ]) {
-    assert.throws(
-      () => getTekidConfig({ ...environment, LOGTO_BASE_URL: baseUrl }),
-      /LOGTO_BASE_URL/
-    );
-  }
-
-  assert.throws(
-    () => getTekidConfig({ ...environment, NODE_ENV: 'production' }),
-    /LOGTO_BASE_URL must use HTTPS in production/
-  );
+test('config defaults to the validated application environment', () => {
+  const config = getTekidConfig();
+  assert.equal(config.appId, testEnvironment.LOGTO_APP_ID);
+  assert.equal(config.appSecret, testEnvironment.LOGTO_APP_SECRET);
+  assert.equal(config.cookieSecret, testEnvironment.LOGTO_COOKIE_SECRET);
+  assert.equal(config.baseUrl, testEnvironment.LOGTO_BASE_URL);
 });
 
 const completeClaims = {

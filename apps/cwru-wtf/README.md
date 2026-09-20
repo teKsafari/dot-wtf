@@ -43,6 +43,10 @@ pnpm db:push
 
 Open [http://dot-wtf.localhost:1355](http://dot-wtf.localhost:1355). Portless manages the app’s internal port.
 
+Copy `.env.example` to `.env.local` and fill in `DATABASE_URL`, `AUTH_SECRET`, and all four `LOGTO_*` values before starting or building. [`env.ts`](env.ts) exposes the typed configuration, validated with `@t3-oss/env-core` and Zod. Application code imports `env` instead of reading `process.env`; the schema lives in [`lib/env-schema.ts`](lib/env-schema.ts). Next.js loads `.env` files, and CLI entry points that import application modules use `scripts/load-env.ts`. The environment module does not load files.
+
+`next.config.mjs` imports the validation before development, build, and server startup, so invalid required settings stop the command with the variable names. Tally settings remain optional; the webhook returns 503 when they are not configured. Turbo forwards and hashes the required Logto variables for builds. `LOGTO_BASE_URL` is the application's HTTP(S) origin and must use HTTPS for a production build. To verify a production build locally, run `LOGTO_BASE_URL=https://cwru.wtf pnpm build`; keep the local `.env.local` origin set to Portless for development.
+
 ## tekID profiles
 
 [/test-profile](http://dot-wtf.localhost:1355/test-profile) starts a tekID sign-in or account creation flow and returns to a minimal name/photo profile. tekID owns the member’s identity and profile; this initial integration does not need a local member table. The existing NextAuth admin login remains separate.
@@ -68,7 +72,7 @@ The tekID app logo uses the shared symbol-and-`wtf` wordmark assets in `public/d
 
 The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses `https://cwru.wtf/bgbg.jpg` as a centered, cover-sized background with a subtle dark overlay. App CSS replaces the shared tekID CSS, so the file includes the existing form styling before the background rule. Keep this copy in sync if the shared form styling changes; update the image URL here for another entity's background.
 
-Validate with `pnpm test:tekid`, `pnpm exec tsc --noEmit`, and `pnpm build`, then test sign-in, reload, and sign-out at the local profile URL. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
+Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:tally`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`, then test sign-in, reload, and sign-out at the local profile URL. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
 
 ---
 

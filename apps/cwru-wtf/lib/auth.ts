@@ -4,8 +4,10 @@ import bcrypt from "bcryptjs"
 import { db } from "@/lib/db"
 import { adminUsers } from "@/lib/schema"
 import { eq } from "drizzle-orm"
+import { env } from "@/env"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: env.AUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: "credentials",

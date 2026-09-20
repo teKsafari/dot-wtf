@@ -1,3 +1,4 @@
+import './load-env';
 import { db } from '@/lib/db';
 import { submissions } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
