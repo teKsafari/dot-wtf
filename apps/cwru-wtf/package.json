@@ -13,12 +13,14 @@
     "create-admin": "npx tsx scripts/create-admin.ts",
     "migrate-database": "node scripts/run-migrate-database.js",
     "tally:export": "tsx scripts/export-tally-migration.ts",
-    "test:tally": "tsx --test scripts/tally-webhook.test.ts"
+    "test:tally": "tsx --test scripts/tally-webhook.test.ts",
+    "test:tekid": "node --conditions=react-server --import tsx --test scripts/tekid.test.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.10.0",
     "@emotion/is-prop-valid": "latest",
     "@hookform/resolvers": "^3.9.1",
+    "@logto/next": "^4.2.11",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -71,6 +73,7 @@
     "react-international-phone": "^4.8.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
+    "server-only": "^0.0.1",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
