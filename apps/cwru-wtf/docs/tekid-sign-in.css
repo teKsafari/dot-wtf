@@ -1,0 +1,55 @@
+/* Preserve tekID's shared form styling: app CSS replaces the inherited CSS. */
+div[data-logto-signature-container="secured"][class*="signature"] {
+    position: absolute !important;
+    left: -9999px !important;
+}
+
+
+/* Move Social Links to the top (Order 1) */
+#app div[class*='socialLinkList'] {
+  order: 1;
+}
+
+/* Move the 'or' Divider to the middle (Order 2) */
+#app main[class*='main'] > div[class*='wrapper'] > div[class*='divider'] {
+  order: 2;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+/* Move the Email Form to the bottom (Order 3) */
+#app main[class*='main'] > div[class*='wrapper'] > form {
+  order: 3;
+}
+
+/* Keep 'Create Account'*/
+#app main[class*='main'] > div[class*='wrapper'] > div[class*='createAccount'] {
+  order: 4;
+}
+
+/*--- colors ---*/
+
+/* 1. The Surface Card Styling */
+html[data-theme='dark'] #app main[class*='main'] {
+   background-color: #1a1a1a !important; /* Your --card hex */
+   background-image: none !important;    /* Removing any default Logto images */
+}
+
+html[data-theme='dark'] #app button[type='submit']:hover {
+  filter: brightness(1.1);
+}
+
+/* 3. Primary Action Button */
+#app button[type='submit'] {
+  /*font-family: "Space Mono", monospace;*/
+  transition: filter 0.2s;
+}
+
+/* dot-wtf background: public/bgbg.jpg, hosted on the public app domain. */
+#app > div[class$='viewBox'] {
+  background-color: #191026;
+  background-image: linear-gradient(rgba(12, 8, 24, 0.3), rgba(12, 8, 24, 0.3)), url("https://cwru.wtf/bgbg.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
