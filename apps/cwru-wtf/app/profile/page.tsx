@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
-export default async function TestProfilePage({
+export default async function ProfilePage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string | string[] }>

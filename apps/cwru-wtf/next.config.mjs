@@ -6,6 +6,9 @@ await jiti.import('./env.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  redirects() {
+    return [{ source: '/test-profile', destination: '/profile', permanent: true }]
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

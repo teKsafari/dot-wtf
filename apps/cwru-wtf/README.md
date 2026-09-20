@@ -49,7 +49,7 @@ Copy `.env.example` to `.env.local` and fill in `DATABASE_URL`, `AUTH_SECRET`, a
 
 ## tekID profiles
 
-[/test-profile](http://dot-wtf.localhost:1355/test-profile) starts a tekID sign-in or account creation flow and returns to a minimal name/photo profile. tekID owns the member’s identity and profile; this initial integration does not need a local member table. The existing NextAuth admin login remains separate.
+[/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to a minimal name/photo profile. tekID owns the member’s identity and profile; this initial integration does not need a local member table. The existing NextAuth admin login remains separate.
 
 Use the **dot-wtf** Traditional web application in the tekID Logto console. Copy `LOGTO_APP_ID` and `LOGTO_APP_SECRET` into `.env.local`, set `LOGTO_BASE_URL`, and generate a separate `LOGTO_COOKIE_SECRET` of at least 32 characters (`openssl rand -hex 32`). These values are server-only; never prefix them with `NEXT_PUBLIC_` or commit secrets.
 
@@ -57,16 +57,16 @@ Register these exact URLs in that application:
 
 | Environment | Redirect URI | Post sign-out redirect URI |
 | --- | --- | --- |
-| Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/test-profile` |
-| Production | `https://cwru.wtf/api/tekid/callback` | `https://cwru.wtf/test-profile` |
+| Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/profile` |
+| Production | `https://cwru.wtf/api/tekid/callback` | `https://cwru.wtf/profile` |
 
 Set `LOGTO_BASE_URL=https://cwru.wtf` and all four environment variables in the production deployment before releasing. Preview deployments need their own exact URLs registered. The SDK uses `https://id.teksafari.org/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Admin roles are not requested.
 
-The callback reconstructs its public URL from `LOGTO_BASE_URL` so it works behind Portless and deployment proxies. Both sign-in and sign-out return only to `/test-profile`.
+The callback reconstructs its public URL from `LOGTO_BASE_URL` so it works behind Portless and deployment proxies. Both sign-in and sign-out return only to `/profile`. The old `/test-profile` path permanently redirects to `/profile`, preserving query parameters for existing links and in-progress authentication flows.
 
 `AuthContextType` is a discriminated union: `isAuthenticated: true` guarantees non-null `sub`, `name`, `email`, and `email_verified` in `claims`; `isAuthenticated: false` has `claims: null`. `name` is the required display name. `username` is a separate, optional identifier that can be unassigned; the application exposes it as `string | null` and never uses it as a substitute for `name`. A missing, blank, or malformed username becomes `null` without blocking sign-in. The server validates required fields once and projects only the application fields. `email_verified` must be a boolean, and `false` is valid; verification requirements are a separate authorization decision. Components can narrow with `isAuthenticated` alone to render `claims.name`. The profile page passes only name and picture to its client avatar; a missing or broken picture shows initials.
 
-An authenticated session with missing or malformed required claims raises `TekidProfileContractError` instead of inventing profile values or reporting the user as signed out. `/test-profile` identifies the missing required field and links to tekID account management, with sign-in and sign-out actions. Existing sessions created before the `email` scope was added must sign in again; changing configured scopes does not update their stored ID token. If fresh sign-in still fails, check the user's required tekID profile fields and the application's scope configuration. Display names are managed under **Personal info**. An unassigned username requires no profile completion or extra sign-in; these members can view their name and photo normally.
+An authenticated session with missing or malformed required claims raises `TekidProfileContractError` instead of inventing profile values or reporting the user as signed out. `/profile` identifies the missing required field and links to tekID account management, with sign-in and sign-out actions. Existing sessions created before the `email` scope was added must sign in again; changing configured scopes does not update their stored ID token. If fresh sign-in still fails, check the user's required tekID profile fields and the application's scope configuration. Display names are managed under **Personal info**. An unassigned username requires no profile completion or extra sign-in; these members can view their name and photo normally.
 
 The tekID app logo uses the shared symbol-and-`wtf` wordmark assets in `public/dot-wtf-wordmark.svg` and `public/dot-wtf-wordmark-dark.svg`. Both are self-contained vectors without an entity prefix, ready for any `<entity-name>.wtf` app. The artwork is sized to 32px inside a transparent 40px-high canvas to fit Logto's logo slot. Regenerate them on macOS with `swift scripts/export-wordmark.swift`. Logto's light/dark app logo fields contain SVG data URLs from these files, so the preview works before deploying the assets. The favicon fields use `https://cwru.wtf/icon.svg`.
 

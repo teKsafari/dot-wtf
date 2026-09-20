@@ -73,7 +73,7 @@ test('rejects origins that can change callbacks or include credentials', () => {
     'mailto:member@example.org',
     'ftp://cwru.wtf',
     'https://user:password@cwru.wtf',
-    'https://cwru.wtf/test-profile',
+    'https://cwru.wtf/profile',
     'https://cwru.wtf?next=https://example.org',
     'https://cwru.wtf#fragment',
     'https://cwru.wtf/../',

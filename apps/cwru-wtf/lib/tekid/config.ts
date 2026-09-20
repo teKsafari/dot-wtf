@@ -5,7 +5,7 @@ import { env } from '@/env';
 import type { ApplicationEnv } from '@/lib/env-schema';
 
 export const tekidCallbackPath = '/api/tekid/callback';
-export const tekidProfilePath = '/test-profile';
+export const tekidProfilePath = '/profile';
 
 type TekidEnvironment = Pick<ApplicationEnv,
   'LOGTO_APP_ID' | 'LOGTO_APP_SECRET' | 'LOGTO_BASE_URL' | 'LOGTO_COOKIE_SECRET'
