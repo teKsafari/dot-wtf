@@ -56,7 +56,7 @@ export function getTekidConfig(
     baseUrl: publicUrl.origin,
     cookieSecret,
     cookieSecure: publicUrl.protocol === 'https:',
-    // The SDK already requests openid, profile, and offline_access.
-    scopes: [],
+    // The SDK adds openid, profile, and offline_access; the session also requires email.
+    scopes: ['email'],
   };
 }

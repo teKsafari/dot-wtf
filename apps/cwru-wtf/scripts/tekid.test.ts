@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { getTekidConfig } from '../lib/tekid/config';
-import { getTekidProfileFromClaims } from '../lib/tekid/profile';
+import { getTekidAuthContextFromClaims, TekidProfileContractError } from '../lib/tekid/profile';
+import type { AuthContextType } from '../lib/tekid/types';
 
 const environment: NodeJS.ProcessEnv = {
   NODE_ENV: 'test',
@@ -12,12 +13,12 @@ const environment: NodeJS.ProcessEnv = {
   LOGTO_COOKIE_SECRET: 'test-cookie-secret-at-least-32-characters',
 };
 
-test('config keeps the public origin and uses only default profile scopes', () => {
+test('config keeps the public origin and requests email for the session contract', () => {
   const local = getTekidConfig(environment);
   assert.equal(local.baseUrl, 'http://dot-wtf.localhost:1355');
   assert.equal(local.endpoint, 'https://id.teksafari.org/');
   assert.equal(local.cookieSecure, false);
-  assert.deepEqual(local.scopes, []);
+  assert.deepEqual(local.scopes, ['email']);
 
   const production = getTekidConfig({
     ...environment,
@@ -71,42 +72,99 @@ test('config rejects origins that can change the intended callback or expose sec
   );
 });
 
-test('profile exposes only the authenticated display name and photo', () => {
+const completeClaims = {
+  sub: 'member-subject',
+  name: 'Ada Lovelace',
+  username: 'ada',
+  email: 'ada@example.org',
+  email_verified: true,
+  picture: 'https://images.example.org/ada.png',
+};
+
+test('authenticated context projects only the application contract fields', () => {
   const claims = {
-    sub: 'private-subject',
-    name: '  Ada Lovelace  ',
-    username: 'ada',
-    picture: 'https://images.example.org/ada.png',
-    email: 'private@example.org',
+    ...completeClaims,
     roles: ['Admin'],
     iss: 'https://id.teksafari.org/oidc',
     aud: 'test-app',
     exp: 1234567890,
     accessToken: 'private-access-token',
+    custom_data: { internal: true },
   };
 
-  assert.deepEqual(getTekidProfileFromClaims(true, claims), {
-    name: 'Ada Lovelace',
-    picture: 'https://images.example.org/ada.png',
+  assert.deepEqual(getTekidAuthContextFromClaims(true, claims), {
+    isAuthenticated: true,
+    claims: completeClaims,
   });
-  assert.equal(getTekidProfileFromClaims(false, claims), null);
-  assert.equal(getTekidProfileFromClaims(true, null), null);
-  assert.equal(getTekidProfileFromClaims(true, undefined), null);
 });
 
-test('profile handles missing, blank, nullable, or malformed display values', () => {
-  assert.deepEqual(
-    getTekidProfileFromClaims(true, { name: null, username: '  ada  ', picture: null }),
-    { name: 'ada', picture: null }
-  );
-  assert.deepEqual(getTekidProfileFromClaims(true, {}), {
-    name: 'Member',
-    picture: null,
+test('only a signed-out session produces the signed-out context', () => {
+  for (const claims of [completeClaims, null, undefined, {}]) {
+    assert.deepEqual(getTekidAuthContextFromClaims(false, claims), {
+      isAuthenticated: false,
+      claims: null,
+    });
+  }
+
+  for (const claims of [null, undefined]) {
+    assert.throws(
+      () => getTekidAuthContextFromClaims(true, claims),
+      (error) => error instanceof TekidProfileContractError && error.field === 'claims'
+    );
+  }
+});
+
+test('every required text claim must be a nonblank string', () => {
+  for (const field of ['sub', 'name', 'username', 'email'] as const) {
+    for (const value of [undefined, null, '', '  ', 42, false, {}, []]) {
+      assert.throws(
+        () => getTekidAuthContextFromClaims(true, { ...completeClaims, [field]: value }),
+        (error) => error instanceof TekidProfileContractError && error.field === field
+      );
+    }
+  }
+});
+
+test('email verification is a required boolean and false remains valid', () => {
+  const context = getTekidAuthContextFromClaims(true, {
+    ...completeClaims,
+    email_verified: false,
   });
-  assert.deepEqual(
-    getTekidProfileFromClaims(true, { name: ' ', username: 42, picture: {} }),
-    { name: 'Member', picture: null }
-  );
+  assert.equal(context.isAuthenticated, true);
+  assert.equal(context.claims?.email_verified, false);
+
+  for (const value of [undefined, null, '', 'true', 'false', 0, 1]) {
+    assert.throws(
+      () => getTekidAuthContextFromClaims(true, { ...completeClaims, email_verified: value }),
+      (error) => error instanceof TekidProfileContractError && error.field === 'email_verified'
+    );
+  }
+});
+
+// tsc checks that the discriminant alone makes all five fields non-nullable.
+function consumeAuthContext({ isAuthenticated, claims }: AuthContextType) {
+  if (isAuthenticated) {
+    const fields: [string, string, string, string, boolean] = [
+      claims.sub, claims.name, claims.username, claims.email, claims.email_verified,
+    ];
+    return fields;
+  }
+  const signedOutClaims: null = claims;
+  return signedOutClaims;
+}
+
+test('consumers narrow the complete contract with isAuthenticated alone', () => {
+  assert.deepEqual(consumeAuthContext(getTekidAuthContextFromClaims(true, completeClaims)), [
+    'member-subject', 'Ada Lovelace', 'ada', 'ada@example.org', true,
+  ]);
+  assert.equal(consumeAuthContext(getTekidAuthContextFromClaims(false, null)), null);
+});
+
+test('missing or malformed optional photos become null', () => {
+  for (const picture of [undefined, null, '', ' ', {}, 42]) {
+    const context = getTekidAuthContextFromClaims(true, { ...completeClaims, picture });
+    assert.equal(context.claims?.picture, null);
+  }
 });
 
 test('profile rejects non-HTTPS, relative, malformed, or credential-bearing photos', () => {
@@ -119,6 +177,18 @@ test('profile rejects non-HTTPS, relative, malformed, or credential-bearing phot
     'https://user:password@images.example.org/ada.png',
     'not a URL',
   ]) {
-    assert.equal(getTekidProfileFromClaims(true, { picture })?.picture, null);
+    const context = getTekidAuthContextFromClaims(true, { ...completeClaims, picture });
+    assert.equal(context.claims?.picture, null);
   }
+});
+
+test('contract errors identify the field without exposing profile values', () => {
+  assert.throws(
+    () => getTekidAuthContextFromClaims(true, {
+      ...completeClaims,
+      username: { private: 'private-profile-value' },
+    }),
+    (error) => error instanceof TekidProfileContractError &&
+      error.message.includes('username') && !error.message.includes('private-profile-value')
+  );
 });

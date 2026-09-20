@@ -1,13 +1,30 @@
-export type TekidProfile = {
-  name: string;
-  picture: string | null;
-};
+import type { AuthContextType, AuthSession } from './types';
 
-type ProfileClaims = {
-  name?: unknown;
-  username?: unknown;
-  picture?: unknown;
-};
+type ProfileClaims = Partial<Record<keyof AuthSession, unknown>>;
+
+export class TekidProfileContractError extends Error {
+  constructor(readonly field: keyof AuthSession | 'claims') {
+    // Keep profile values and tokens out of error messages.
+    super(`tekID profile contract requires a valid ${field}`);
+    this.name = 'TekidProfileContractError';
+  }
+}
+
+function requiredText(value: unknown, field: 'sub' | 'name' | 'username' | 'email'): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new TekidProfileContractError(field);
+  }
+
+  return value;
+}
+
+function requiredBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new TekidProfileContractError('email_verified');
+  }
+
+  return value;
+}
 
 function profileText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -27,15 +44,23 @@ function profilePicture(value: unknown): string | null {
   }
 }
 
-// Only these display fields may leave the server; never spread token claims.
-export function getTekidProfileFromClaims(
+// Validate once, then project the application fields without spreading raw claims.
+export function getTekidAuthContextFromClaims(
   isAuthenticated: boolean,
   claims: ProfileClaims | null | undefined
-): TekidProfile | null {
-  if (!isAuthenticated || !claims) return null;
+): AuthContextType {
+  if (!isAuthenticated) return { isAuthenticated: false, claims: null };
+  if (!claims) throw new TekidProfileContractError('claims');
 
   return {
-    name: profileText(claims.name) ?? profileText(claims.username) ?? 'Member',
-    picture: profilePicture(claims.picture),
+    isAuthenticated: true,
+    claims: {
+      sub: requiredText(claims.sub, 'sub'),
+      name: requiredText(claims.name, 'name'),
+      username: requiredText(claims.username, 'username'),
+      email: requiredText(claims.email, 'email'),
+      email_verified: requiredBoolean(claims.email_verified),
+      picture: profilePicture(claims.picture),
+    },
   };
 }
