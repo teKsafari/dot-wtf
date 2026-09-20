@@ -97,10 +97,23 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="flex flex-col items-center gap-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-10 sm:flex-row sm:justify-between sm:py-10">
-        <span className="font-brand text-lg font-semibold text-foreground">
-          <Wordmark />
-        </span>
+      <footer className="flex flex-col items-center gap-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-14 sm:flex-row sm:justify-between sm:pb-20 sm:pt-14">
+        <div className="flex flex-col items-center gap-1 sm:items-start">
+          <span className="font-brand text-lg font-semibold text-foreground">
+            <Wordmark />
+          </span>
+          <span className="font-mono text-caption text-muted-foreground">
+            Powered by{" "}
+            <a
+              href="https://teksafari.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus-ring rounded-sm text-foreground underline underline-offset-4 transition-colors hover:text-muted-foreground"
+            >
+              teKsafari
+            </a>
+          </span>
+        </div>
         <span className="font-mono text-caption text-muted-foreground">
           &copy; {new Date().getFullYear()} &mdash; We Tinker Fearlessly
         </span>
