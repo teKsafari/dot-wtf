@@ -1,7 +1,10 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import Wordmark from "@/components/wordmark"
-import { getTekidProfile } from "@/lib/tekid/server"
+import { tekidProfilePath } from "@/lib/tekid/config"
+import { TekidProfileContractError } from "@/lib/tekid/profile"
+import { getTekidAuthContext } from "@/lib/tekid/server"
 import { signInWithTekid, signOutFromTekid } from "./actions"
 import { ProfileAvatar, ProfileSubmitButton } from "./profile-controls"
 
@@ -12,12 +15,26 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
-export default async function TestProfilePage({
+export default async function ProfilePage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string | string[] }>
 }) {
-  const [profile, params] = await Promise.all([getTekidProfile(), searchParams])
+  const [auth, params] = await Promise.all([
+    getTekidAuthContext().catch((error: unknown) => {
+      // Older sessions need a new sign-in after adding the required email scope.
+      // An incomplete profile is distinct from a signed-out session.
+      if (error instanceof TekidProfileContractError) return error
+      throw error
+    }),
+    searchParams,
+  ])
+
+  // A retried callback can leave an error flag after a session was established.
+  if (!(auth instanceof TekidProfileContractError) && auth.isAuthenticated && params.error === "sign-in") {
+    redirect(tekidProfilePath)
+  }
+
   const errorMessage =
     params.error === "sign-in"
       ? "We couldn’t complete your sign-in. Please try again."
@@ -35,11 +52,42 @@ export default async function TestProfilePage({
 
       <main className="flex flex-1 items-center justify-center px-6 pb-24">
         <section aria-labelledby="profile-heading" className="w-full max-w-sm text-center">
-          {profile ? (
+          {auth instanceof TekidProfileContractError ? (
             <>
-              <ProfileAvatar name={profile.name} picture={profile.picture} />
+              <h1 id="profile-heading" className="font-brand text-3xl font-semibold tracking-tight">
+                Your profile needs attention
+              </h1>
+              <p role="alert" className="mt-3 text-sm text-muted-foreground">
+                {auth.field === "name" || auth.field === "email"
+                  ? `Check that your tekID profile has a ${auth.field === "email" ? "valid email address" : "display name"}, then sign in again.`
+                  : "We couldn’t load the required profile details from tekID. Check your profile, then sign in again."}
+              </p>
+              <a
+                href={auth.field === "name"
+                  ? "https://id.teksafari.org/account/profile"
+                  : "https://id.teksafari.org/account/security"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="focus-ring mt-4 inline-flex min-h-11 items-center rounded-sm text-sm underline underline-offset-4 hover:text-muted-foreground"
+              >
+                Open tekID account
+              </a>
+              <form action={signInWithTekid} className="mt-7">
+                <ProfileSubmitButton pendingLabel="Continuing to tekID…">
+                  Sign in again
+                </ProfileSubmitButton>
+              </form>
+              <form action={signOutFromTekid} className="mt-3">
+                <ProfileSubmitButton pendingLabel="Signing out…" variant="outline">
+                  Sign out
+                </ProfileSubmitButton>
+              </form>
+            </>
+          ) : auth.isAuthenticated ? (
+            <>
+              <ProfileAvatar name={auth.claims.name} picture={auth.claims.picture} />
               <h1 id="profile-heading" className="mt-5 break-words font-brand text-3xl font-semibold tracking-tight">
-                {profile.name}
+                {auth.claims.name}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">Your dot wtf profile</p>
               <form action={signOutFromTekid} className="mt-7">

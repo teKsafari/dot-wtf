@@ -1,3 +1,4 @@
+import './test-env';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
@@ -374,13 +375,11 @@ test('requires the official Tally submission timestamp', () => {
 
 test('rejects an oversized webhook before signature verification', async () => {
   const environment = {
-    DATABASE_URL: process.env.DATABASE_URL,
     TALLY_WEBHOOK_SECRET: process.env.TALLY_WEBHOOK_SECRET,
     TALLY_FORM_ID: process.env.TALLY_FORM_ID,
     TALLY_FIELD_KEYS: process.env.TALLY_FIELD_KEYS,
   };
 
-  process.env.DATABASE_URL ??= 'postgres://test:test@127.0.0.1:1/test';
   process.env.TALLY_WEBHOOK_SECRET = 'test-secret';
   process.env.TALLY_FORM_ID = FORM_ID;
   process.env.TALLY_FIELD_KEYS = JSON.stringify(FIELD_KEYS);

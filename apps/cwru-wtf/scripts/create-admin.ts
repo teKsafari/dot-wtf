@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 import { adminUsers } from '@/lib/schema';

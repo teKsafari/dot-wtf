@@ -3,9 +3,10 @@ import 'server-only';
 import { getLogtoContext } from '@logto/next/server-actions';
 
 import { getTekidConfig } from './config';
-import { getTekidProfileFromClaims, type TekidProfile } from './profile';
+import { getTekidAuthContextFromClaims } from './profile';
+import type { AuthContextType } from './types';
 
-export async function getTekidProfile(): Promise<TekidProfile | null> {
+export async function getTekidAuthContext(): Promise<AuthContextType> {
   const { isAuthenticated, claims } = await getLogtoContext(getTekidConfig());
-  return getTekidProfileFromClaims(isAuthenticated, claims);
+  return getTekidAuthContextFromClaims(isAuthenticated, claims);
 }

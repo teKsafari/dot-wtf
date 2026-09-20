@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { env } from '@/env';
 import { db } from '@/lib/db';
 import { actionLogs, submissions } from '@/lib/schema';
 import {
@@ -161,9 +162,9 @@ async function logTallySubmission(submissionId: number) {
 }
 
 export async function POST(request: Request) {
-  const webhookSecret = process.env.TALLY_WEBHOOK_SECRET;
-  const expectedFormId = process.env.TALLY_FORM_ID;
-  const fieldKeys = parseTallyFieldKeys(process.env.TALLY_FIELD_KEYS);
+  const webhookSecret = env.TALLY_WEBHOOK_SECRET;
+  const expectedFormId = env.TALLY_FORM_ID;
+  const fieldKeys = parseTallyFieldKeys(env.TALLY_FIELD_KEYS);
 
   if (!webhookSecret || !expectedFormId || !fieldKeys) {
     console.error('Tally webhook environment is not configured');
