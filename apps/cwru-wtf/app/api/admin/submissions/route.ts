@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { auth } from '@/lib/auth';
+import {
+  requireDashboardPermission,
+  TekidAuthorizationError,
+} from '@/lib/tekid/authorization';
+import { assertSameOriginMutation } from '@/lib/tekid/request';
 import { db } from '@/lib/db';
 import { submissions } from '@/lib/schema';
 import { logAction } from '@/lib/action-logger';
@@ -25,22 +29,18 @@ const auditActions: Record<SubmissionAction, string> = {
 
 export async function GET() {
   try {
-    const session = await auth();
-
-    if (
-      !session?.user ||
-      (session.user.role !== 'admin' && session.user.role !== 'super_admin')
-    ) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await requireDashboardPermission('submissions:read');
 
     const allSubmissions = await db
       .select()
       .from(submissions)
       .orderBy(desc(submissions.createdAt));
 
-    return NextResponse.json(allSubmissions);
+    return NextResponse.json(allSubmissions, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
+    if (error instanceof TekidAuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error fetching submissions:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -51,14 +51,8 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await auth();
-
-    if (
-      !session?.user ||
-      (session.user.role !== 'admin' && session.user.role !== 'super_admin')
-    ) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    assertSameOriginMutation(request);
+    const auth = await requireDashboardPermission('submissions:manage');
 
     const body = await request.json().catch(() => null);
     const parsedBody = updateSubmissionSchema.safeParse(body);
@@ -135,7 +129,7 @@ export async function PATCH(request: NextRequest) {
     await logAction(
       id,
       auditAction,
-      `Submission ${auditAction} via admin panel`
+      `Submission ${auditAction} via admin panel by tekID user ${auth.claims.sub}`
     );
 
     // Note: In a real app, you'd integrate with an email service like SendGrid, Resend, etc.
@@ -157,8 +151,11 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(updatedSubmission);
+    return NextResponse.json(updatedSubmission, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
+    if (error instanceof TekidAuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error updating submission:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

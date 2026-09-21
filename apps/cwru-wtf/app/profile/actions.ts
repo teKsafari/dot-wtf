@@ -1,27 +1,16 @@
 'use server';
 
-import { signIn, signOut } from '@logto/next/server-actions';
+import { signOut } from '@logto/next/server-actions';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
 import {
   getTekidConfig,
-  tekidCallbackPath,
   tekidProfilePath,
 } from '@/lib/tekid/config';
+import { beginTekidSignIn } from '@/lib/tekid/sign-in';
 
 export async function signInWithTekid(): Promise<void> {
-  const config = getTekidConfig();
-
-  try {
-    await signIn(config, {
-      redirectUri: new URL(tekidCallbackPath, config.baseUrl),
-      postRedirectUri: new URL(tekidProfilePath, config.baseUrl),
-    });
-  } catch (error) {
-    // The SDK uses Next.js redirects, which must reach the framework unchanged.
-    unstable_rethrow(error);
-    redirect(`${tekidProfilePath}?error=sign-in`);
-  }
+  await beginTekidSignIn(tekidProfilePath);
 }
 
 export async function signOutFromTekid(): Promise<void> {

@@ -4,7 +4,6 @@ import type { Metadata } from "next"
 import { fontRounded, fontMono } from "@/lib/fonts"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
-import { SessionProvider } from "next-auth/react"
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cwru.wtf"),
@@ -30,17 +29,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${fontRounded.variable} ${fontMono.variable}`}>
       <body className="font-primary antialiased">
-        <SessionProvider>
-          <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-            {children}
-            <Toaster
-              theme="light"
-              position="bottom-right"
-              expand={false}
-              richColors
-            />
-          </ThemeProvider>
-        </SessionProvider>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          {children}
+          <Toaster
+            theme="light"
+            position="bottom-right"
+            expand={false}
+            richColors
+          />
+        </ThemeProvider>
       </body>
     </html>
   )

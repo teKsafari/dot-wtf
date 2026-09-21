@@ -97,7 +97,7 @@ export default async function TestPage() {
                   <Link href="/">Test Submission Form</Link>
                 </Button>
                 <Button asChild variant="outline" className="bg-transparent border-pink-500 text-pink-500 hover:border-pink-400 hover:bg-pink-500/10">
-                  <Link href="/login">Admin Login</Link>
+                  <Link href="/profile">tekID Profile</Link>
                 </Button>
                 <Button asChild variant="outline" className="bg-transparent border-green-500 text-green-500 hover:border-green-400 hover:bg-green-500/10">
                   <Link href="/admin">Admin Dashboard</Link>
@@ -121,8 +121,8 @@ export default async function TestPage() {
                   <span className="text-green-400">Enabled</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Login Page:</span>
-                  <span>/login</span>
+                  <span className="text-gray-400">Sign-in:</span>
+                  <span>Shared tekID login</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Admin Dashboard:</span>
@@ -130,8 +130,8 @@ export default async function TestPage() {
                 </div>
                 <div className="p-3 bg-blue-900/50 border border-blue-700 rounded mt-4">
                   <p className="text-blue-300 text-xs">
-                    💡 Admin users are created via the create-admin script. 
-                    Access to /admin requires authentication.
+                    Dashboard access uses tekID. The admin and instance-lead
+                    roles are assigned within this instance’s organization.
                   </p>
                 </div>
               </div>
@@ -162,11 +162,11 @@ export default async function TestPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Authentication:</span>
-                  <span className="text-green-500">NextAuth.js</span>
+                  <span className="text-green-500">tekID (Logto)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Session Strategy:</span>
-                  <span>JWT</span>
+                  <span className="text-gray-400">Authorization:</span>
+                  <span>Organization roles and permissions</span>
                 </div>
               </div>
             </CardContent>

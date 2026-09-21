@@ -2,6 +2,7 @@ import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
 
 const nonblank = z.string().refine((value) => value.trim().length > 0);
+const logtoId = z.string().regex(/^[A-Za-z0-9_-]+$/);
 
 export function createApplicationEnv(runtimeEnvironment: Record<string, string | undefined>) {
   const origin = z.string().url().superRefine((value, context) => {
@@ -34,11 +35,18 @@ export function createApplicationEnv(runtimeEnvironment: Record<string, string |
     server: {
       NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
       DATABASE_URL: z.string().url(),
-      AUTH_SECRET: nonblank,
       LOGTO_APP_ID: nonblank,
       LOGTO_APP_SECRET: nonblank,
       LOGTO_BASE_URL: origin,
       LOGTO_COOKIE_SECRET: z.string().min(32).refine((value) => value.trim().length > 0),
+      LOGTO_MANAGEMENT_APP_ID: logtoId,
+      LOGTO_MANAGEMENT_APP_SECRET: nonblank,
+      LOGTO_ORGANIZATION_ID: logtoId,
+      LOGTO_ADMIN_ROLE_ID: logtoId,
+      LOGTO_INSTANCE_LEAD_ROLE_ID: logtoId.refine(
+        (value) => value !== runtimeEnvironment.LOGTO_ADMIN_ROLE_ID,
+        'Admin and instance-lead must use different organization roles'
+      ),
       TALLY_FORM_ID: nonblank.optional(),
       TALLY_WEBHOOK_SECRET: nonblank.optional(),
       TALLY_FIELD_KEYS: z.string().optional(),

@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import Wordmark from "@/components/wordmark"
 import { tekidProfilePath } from "@/lib/tekid/config"
+import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 import { getTekidAuthContext } from "@/lib/tekid/server"
 import { signInWithTekid, signOutFromTekid } from "./actions"
@@ -90,6 +92,9 @@ export default async function ProfilePage({
                 {auth.claims.name}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">Your dot wtf profile</p>
+              <Suspense fallback={null}>
+                <DashboardLink />
+              </Suspense>
               <form action={signOutFromTekid} className="mt-7">
                 <ProfileSubmitButton pendingLabel="Signing out…" variant="outline">
                   Sign out
@@ -124,5 +129,28 @@ export default async function ProfilePage({
         </section>
       </main>
     </div>
+  )
+}
+
+async function DashboardLink() {
+  const auth = await getDashboardAuthContext().catch((error: unknown) => {
+    if (error instanceof TekidAuthorizationError && error.status === 503) return null
+    throw error
+  })
+
+  if (
+    !auth?.isAuthenticated ||
+    !auth.canAccessDashboard ||
+    (auth.role !== "admin" && auth.role !== "instance-lead") ||
+    !auth.permissions.includes("submissions:read")
+  ) return null
+
+  return (
+    <Link
+      href="/admin"
+      className="focus-ring mt-4 inline-flex min-h-11 items-center rounded-sm text-sm underline underline-offset-4 hover:text-muted-foreground"
+    >
+      Open dashboard
+    </Link>
   )
 }
