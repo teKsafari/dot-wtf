@@ -1,11 +1,12 @@
 "use client"
 
 import Script from "next/script"
-import { ArrowUpRight } from "lucide-react"
 
-const formUrl = "https://forms.teksafari.com/join-dot-wtf"
-const embedUrl =
-  "https://tally.so/embed/lbp7OX?alignLeft=1&transparentBackground=1&dynamicHeight=1"
+// The form paints its own #121211 background, which is exactly the site's
+// dark-mode background, so the embed reads as part of the page there while
+// staying legible on the light theme. transparentBackground would break the
+// light theme: the form's text is fixed near-white.
+const embedUrl = "https://tally.so/embed/lbp7OX?alignLeft=1&dynamicHeight=1"
 
 declare global {
   interface Window {
@@ -32,12 +33,12 @@ const loadEmbeds = () => {
 
 export default function TallyApplicationForm() {
   return (
-    <div className="mx-auto w-full max-w-[700px] corner-squircle overflow-hidden rounded-xl bg-[#121211] p-5 sm:p-10">
+    <>
       <iframe
         data-tally-src={embedUrl}
         height="500"
         title="Join CWRU.WTF application form"
-        className="block w-full border-0"
+        className="mx-auto block w-full max-w-[700px] rounded-xl border-0"
         style={{ colorScheme: "dark" }}
       />
       <Script
@@ -46,15 +47,6 @@ export default function TallyApplicationForm() {
         onReady={loadEmbeds}
         onError={loadEmbeds}
       />
-      <a
-        href={formUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-6 inline-flex min-h-11 items-center gap-1 font-nunito text-sm text-[#a2a19a] underline-offset-4 hover:text-[#eeeeed] hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eeeeed]"
-      >
-        Open application in a new tab
-        <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-      </a>
-    </div>
+    </>
   )
 }

@@ -6,7 +6,6 @@ import PeekCat from "@/components/peek-cat"
 import TopCat from "@/components/top-cat"
 import WtfMeanings from "@/components/wtf-meanings"
 import Wordmark from "@/components/wordmark"
-import TallyApplicationForm from "@/components/tally-application-form"
 import SiteFooter from "@/components/site-footer"
 import SiteNav from "@/components/site-nav"
 import clubCat from "@/public/cat-i-am.png"
@@ -40,7 +39,7 @@ export default function Home() {
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Button asChild size="xl">
-            <Link href="#join">
+            <Link href="/join">
               Join .wtf
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -90,11 +89,6 @@ export default function Home() {
             }}
           />
         </div>
-      </section>
-
-      {/* Join */}
-      <section id="join" aria-label="Join CWRU.WTF" className="screen-line-after py-20 md:py-28">
-        <TallyApplicationForm />
       </section>
 
       <SiteFooter />
