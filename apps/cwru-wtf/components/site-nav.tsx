@@ -1,5 +1,8 @@
+import { Suspense } from "react"
 import Link from "next/link"
-import { Calendar, Github, Instagram } from "lucide-react"
+import { Calendar, Github, Instagram, LayoutDashboard, UserRound } from "lucide-react"
+import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
+import { TekidProfileContractError } from "@/lib/tekid/profile"
 
 const socialLinks = [
   {
@@ -23,6 +26,29 @@ function Separator() {
   return <li aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
 }
 
+async function DashboardNavItem() {
+  const auth = await getDashboardAuthContext().catch((error: unknown) => {
+    if (error instanceof TekidProfileContractError) return null
+    if (error instanceof TekidAuthorizationError && error.status === 503) return null
+    throw error
+  })
+
+  if (
+    !auth?.isAuthenticated ||
+    !auth.canAccessDashboard ||
+    !auth.role ||
+    !auth.permissions.includes("submissions:read")
+  ) return null
+
+  return (
+    <li className="inline-flex">
+      <Link href="/admin" aria-label="Dashboard" title="Dashboard" className={linkClassName}>
+        <LayoutDashboard aria-hidden="true" className="h-4 w-4" />
+      </Link>
+    </li>
+  )
+}
+
 export default function SiteNav() {
   return (
     <nav
@@ -35,6 +61,16 @@ export default function SiteNav() {
             <Calendar aria-hidden="true" className="h-4 w-4" />
           </Link>
         </li>
+
+        <li className="inline-flex">
+          <Link href="/profile" aria-label="Profile" title="Profile" className={linkClassName}>
+            <UserRound aria-hidden="true" className="h-4 w-4" />
+          </Link>
+        </li>
+
+        <Suspense fallback={null}>
+          <DashboardNavItem />
+        </Suspense>
 
         <Separator />
 

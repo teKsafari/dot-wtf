@@ -9,23 +9,32 @@ test('validates required variables and preserves credential values', () => {
   const environment = createApplicationEnv({
     ...testEnvironment,
     LOGTO_APP_SECRET: ' credential-with-intentional-spaces ',
+    LOGTO_MANAGEMENT_APP_SECRET: ' management-credential-with-intentional-spaces ',
   });
 
   assert.equal(environment.DATABASE_URL, testEnvironment.DATABASE_URL);
-  assert.equal(environment.AUTH_SECRET, testEnvironment.AUTH_SECRET);
   assert.equal(environment.LOGTO_APP_ID, testEnvironment.LOGTO_APP_ID);
   assert.equal(environment.LOGTO_APP_SECRET, ' credential-with-intentional-spaces ');
   assert.equal(environment.LOGTO_COOKIE_SECRET, testEnvironment.LOGTO_COOKIE_SECRET);
+  assert.equal(environment.LOGTO_MANAGEMENT_APP_ID, testEnvironment.LOGTO_MANAGEMENT_APP_ID);
+  assert.equal(environment.LOGTO_MANAGEMENT_APP_SECRET, ' management-credential-with-intentional-spaces ');
+  assert.equal(environment.LOGTO_ORGANIZATION_ID, testEnvironment.LOGTO_ORGANIZATION_ID);
+  assert.equal(environment.LOGTO_ADMIN_ROLE_ID, testEnvironment.LOGTO_ADMIN_ROLE_ID);
+  assert.equal(environment.LOGTO_INSTANCE_LEAD_ROLE_ID, testEnvironment.LOGTO_INSTANCE_LEAD_ROLE_ID);
 });
 
 test('rejects every missing, empty, or whitespace-only required value', () => {
   for (const key of [
     'DATABASE_URL',
-    'AUTH_SECRET',
     'LOGTO_APP_ID',
     'LOGTO_APP_SECRET',
     'LOGTO_BASE_URL',
     'LOGTO_COOKIE_SECRET',
+    'LOGTO_MANAGEMENT_APP_ID',
+    'LOGTO_MANAGEMENT_APP_SECRET',
+    'LOGTO_ORGANIZATION_ID',
+    'LOGTO_ADMIN_ROLE_ID',
+    'LOGTO_INSTANCE_LEAD_ROLE_ID',
   ]) {
     for (const value of [undefined, '', ' \n\t ']) {
       assert.throws(
@@ -34,6 +43,32 @@ test('rejects every missing, empty, or whitespace-only required value', () => {
       );
     }
   }
+});
+
+test('rejects malformed management, organization, and role IDs', () => {
+  for (const key of [
+    'LOGTO_MANAGEMENT_APP_ID',
+    'LOGTO_ORGANIZATION_ID',
+    'LOGTO_ADMIN_ROLE_ID',
+    'LOGTO_INSTANCE_LEAD_ROLE_ID',
+  ]) {
+    for (const value of [' value ', '../other-organization', 'role/id', 'role?id=other', '%2fadmin']) {
+      assert.throws(
+        () => createApplicationEnv({ ...testEnvironment, [key]: value }),
+        new RegExp(`Invalid environment variables:.*\\b${key}\\b`)
+      );
+    }
+  }
+});
+
+test('requires distinct admin and instance-lead roles', () => {
+  assert.throws(
+    () => createApplicationEnv({
+      ...testEnvironment,
+      LOGTO_INSTANCE_LEAD_ROLE_ID: testEnvironment.LOGTO_ADMIN_ROLE_ID,
+    }),
+    /LOGTO_INSTANCE_LEAD_ROLE_ID/
+  );
 });
 
 test('requires a database URL and a cookie secret of at least 32 characters', () => {

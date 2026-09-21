@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import {
+  requireDashboardPermission,
+  TekidAuthorizationError,
+} from '@/lib/tekid/authorization';
 import { getSubmissionStats } from '@/lib/submissions';
 
 export async function GET() {
   try {
-    const session = await auth();
-    
-    if (!session?.user || (session.user.role !== 'admin' && session.user.role !== 'super_admin')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    await requireDashboardPermission('submissions:read');
 
     const stats = await getSubmissionStats();
-    return NextResponse.json(stats);
+    return NextResponse.json(stats, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
+    if (error instanceof TekidAuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error fetching stats:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   type ReactNode,
   type Ref,
@@ -10,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { signOut } from "next-auth/react";
+import { signOutFromTekid } from "@/app/profile/actions";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
   Archive as ArchiveIcon,
@@ -34,6 +35,10 @@ import { Input } from "@/components/ui/input";
 import Wordmark from "@/components/wordmark";
 import { cn } from "@/lib/utils";
 
+const MemberManagement = dynamic(() => import("./member-management"), {
+  loading: () => <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading members…</p>,
+});
+
 export interface AdminSubmission {
   id: number;
   name: string;
@@ -55,7 +60,11 @@ interface AdminDashboardProps {
   admin: {
     email: string;
     name: string;
-    role: string;
+    role: "admin" | "instance-lead";
+    canManageSubmissions: boolean;
+    canReadMembers: boolean;
+    canAddMembers: boolean;
+    canAssignRoles: boolean;
   };
   initialSubmissions: AdminSubmission[];
 }
@@ -93,6 +102,7 @@ export default function AdminDashboard({
   admin,
   initialSubmissions,
 }: AdminDashboardProps) {
+  const [activeView, setActiveView] = useState<"applications" | "members">("applications");
   const [submissions, setSubmissions] =
     useState<AdminSubmission[]>(initialSubmissions);
   const [filter, setFilter] = useState<SubmissionFilter>("pending");
@@ -315,7 +325,7 @@ export default function AdminDashboard({
     submissionId: number,
     action: SubmissionAction,
   ) => {
-    if (requestInFlightRef.current) return;
+    if (requestInFlightRef.current || !admin.canManageSubmissions) return;
     requestInFlightRef.current = true;
     setPendingMutation({ submissionId, action });
 
@@ -448,18 +458,36 @@ export default function AdminDashboard({
             >
               {admin.name}
             </span>
-            <Button
-              onClick={() => signOut({ callbackUrl: "/" })}
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 rounded-md"
-              aria-label="Sign out of the admin dashboard"
-              title="Sign out"
-            >
-              <LogOut aria-hidden="true" className="h-4 w-4" />
-            </Button>
+            <form action={signOutFromTekid}>
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 rounded-md"
+                aria-label="Sign out of the admin dashboard"
+                title="Sign out"
+              >
+                <LogOut aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </form>
           </div>
         </div>
+        <nav aria-label="Dashboard sections" className="mx-auto flex max-w-[1440px] gap-6 px-4 sm:px-6 lg:px-8">
+          {(["applications", "members"] as const).filter((view) => view !== "members" || admin.canReadMembers).map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setActiveView(view)}
+              aria-pressed={activeView === view}
+              className={cn(
+                "focus-ring -mb-px min-h-11 border-b-2 text-sm",
+                activeView === view ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {view === "applications" ? "Applications" : "Members"}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main
@@ -467,6 +495,9 @@ export default function AdminDashboard({
         tabIndex={-1}
         className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col outline-none lg:px-8"
       >
+        {activeView === "members" ? (
+          <MemberManagement canAssignRoles={admin.canAssignRoles} canAddMembers={admin.canAddMembers} />
+        ) : <>
         <div
           className={cn(
             "shrink-0 px-4 sm:px-6 lg:px-0",
@@ -625,7 +656,7 @@ export default function AdminDashboard({
             {selectedSubmission ? (
               <SubmissionDetail
                 activeAction={activeAction}
-                actionsDisabled={pendingMutation !== null || isRefreshing}
+                actionsDisabled={!admin.canManageSubmissions || pendingMutation !== null || isRefreshing}
                 headingRef={detailHeadingRef}
                 nextSubmission={nextSubmission}
                 onBack={returnToQueue}
@@ -643,6 +674,7 @@ export default function AdminDashboard({
             )}
           </div>
         </section>
+        </>}
       </main>
     </div>
   );
