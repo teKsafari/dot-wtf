@@ -74,7 +74,14 @@ The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-s
 
 ## Organization roles and dashboard access
 
-Each deployed entity site uses its own Logto organization, selected by `LOGTO_ORGANIZATION_ID`. Create two **User organization roles** in Logto's organization template: `admin` and `instance-lead`. Assignments belong to a specific organization; an admin of another entity does not gain access to this site's dashboard. The role IDs are configuration, and roles are not inferred from a user's email, name, or optional username.
+Each deployed entity site uses its own Logto organization, selected by `LOGTO_ORGANIZATION_ID`. Create two **User organization roles** in Logto's organization template: `dot-wtf:admin` and `dot-wtf:instance-lead`. Logto shares the role catalog across its tenant; the `dot-wtf:` prefix identifies which application defines these roles. Assignments belong to a specific organization; an admin of another entity does not gain access to this site's dashboard.
+
+| Logto role name | App alias | Configured role ID |
+| --- | --- | --- |
+| `dot-wtf:admin` | `admin` | `LOGTO_ADMIN_ROLE_ID` |
+| `dot-wtf:instance-lead` | `instance-lead` | `LOGTO_INSTANCE_LEAD_ROLE_ID` |
+
+The app's TypeScript types, dashboard inputs, and CLI keep the short aliases. Types check those labels during development; server authorization compares the configured role IDs and permissions at runtime. The prefix makes the shared catalog clearer, while the organization and ID checks enforce access. For existing installations, rename the two Logto roles in place to retain their IDs, permissions, and user assignments; the environment values do not change. Roles are never inferred from a user's email, name, or optional username.
 
 | Access | Ordinary member | `instance-lead` | `admin` |
 | --- | --- | --- | --- |
@@ -85,7 +92,7 @@ Each deployed entity site uses its own Logto organization, selected by `LOGTO_OR
 
 An ordinary member has organization membership without either privileged role; no separate `member` role is needed. A tekID user can view `/profile` before being added to the organization. Dashboard role changes affect only the two configured roles within this site's organization.
 
-Give both organization roles the permissions `dashboard:access`, `submissions:read`, `submissions:manage`, `members:read`, and `members:invite`. Give only `admin` the additional permission `members:assign-roles`. These are organization permissions in Logto's organization template. The app requires the configured role ID and the permission for the requested action; it never allows an instance-lead to assign roles even if that permission is accidentally added to the role in Logto.
+Give both organization roles the permissions `dashboard:access`, `submissions:read`, `submissions:manage`, `members:read`, and `members:invite`. Give only `dot-wtf:admin` the additional permission `members:assign-roles`. These are organization permissions in Logto's organization template; their names remain unchanged by the role prefix. The app requires the configured role ID and the permission for the requested action; it never allows an instance-lead to assign roles even if that permission is accidentally added to the role in Logto.
 
 Configure a separate **Machine-to-machine application** with access to the Logto Management API, and set `LOGTO_MANAGEMENT_APP_ID` and `LOGTO_MANAGEMENT_APP_SECRET`. Set `LOGTO_ADMIN_ROLE_ID` and `LOGTO_INSTANCE_LEAD_ROLE_ID` to the distinct IDs of the corresponding User organization roles. These are different credentials from the Traditional web application's `LOGTO_APP_ID` and `LOGTO_APP_SECRET`. The official `@logto/api` SDK obtains and refreshes the management token for the self-hosted API resource `https://default.logto.app/api`. See [Logto Management API setup](https://docs.logto.io/integrate-logto/interact-with-management-api).
 
@@ -99,7 +106,7 @@ Bootstrap the first administrator from a trusted terminal after configuring the 
 pnpm create-admin --email member@example.org --role admin
 ```
 
-The same command accepts `--role instance-lead`. It requires a unique existing primary-email match, rejects suspended accounts, verifies the selected role, and adds membership and that role without replacing existing assignments. It reads back the assignment before reporting success. Rerunning is safe: Logto ignores memberships and role assignments already present. It never creates local passwords. This command uses the management credential directly and is intended for trusted operators; routine changes use the dashboard's admin-only role checks.
+The same command accepts `--role instance-lead`. It requires a unique existing primary-email match, rejects suspended accounts, verifies that the configured role ID belongs to the expected prefixed User organization role, and adds membership and that role without replacing existing assignments. It reads back the assignment before reporting success. Rerunning is safe: Logto ignores memberships and role assignments already present. It never creates local passwords. This command uses the management credential directly and is intended for trusted operators; routine changes use the dashboard's admin-only role checks.
 
 Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
 

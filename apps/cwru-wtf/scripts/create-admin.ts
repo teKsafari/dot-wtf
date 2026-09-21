@@ -48,6 +48,8 @@ async function main() {
   const { email, role } = input.data;
   const organizationId = env.LOGTO_ORGANIZATION_ID;
   const roleId = role === 'admin' ? env.LOGTO_ADMIN_ROLE_ID : env.LOGTO_INSTANCE_LEAD_ROLE_ID;
+  // The app uses local aliases; Logto's shared catalog uses namespaced names.
+  const expectedRoleName = `dot-wtf:${role}`;
 
   const organization = await apiClient.GET('/api/organizations/{id}', {
     params: { path: { id: organizationId } },
@@ -64,9 +66,9 @@ async function main() {
   if (
     !organizationRole.response.ok ||
     organizationRole.data?.type !== 'User' ||
-    organizationRole.data.name !== role
+    organizationRole.data.name !== expectedRoleName
   ) {
-    throw new BootstrapError('The configured role must be the matching User organization role. No changes were made.');
+    throw new BootstrapError(`The configured role must be the User organization role ${expectedRoleName}. No changes were made.`);
   }
 
   const users = await apiClient.GET('/api/users', {
