@@ -48,6 +48,15 @@ export class TekidAuthorizationError extends Error {
 const scopesSchema = z.array(z.object({ name: z.string() }));
 export const organizationRolesSchema = z.array(z.object({ id: z.string().min(1) }));
 
+export function canOpenDashboard(context: DashboardAuthContext): boolean {
+  return (
+    context.isAuthenticated &&
+    context.canAccessDashboard &&
+    context.role !== null &&
+    context.permissions.includes('submissions:read')
+  );
+}
+
 export function roleFromIds(ids: string[], config: TekidOrganizationConfig): DashboardRole | null {
   if (ids.includes(config.adminRoleId)) return 'admin';
   if (ids.includes(config.instanceLeadRoleId)) return 'instance-lead';

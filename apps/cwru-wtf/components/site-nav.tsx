@@ -1,8 +1,10 @@
-import { Suspense } from "react"
+import { cookies } from "next/headers"
 import Link from "next/link"
-import { Calendar, Github, Instagram, LayoutDashboard, UserRound } from "lucide-react"
-import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
+import { Calendar, Github, Instagram, UserRound } from "lucide-react"
+import DashboardNavLink from "@/components/dashboard-nav-link"
+import { dashboardHintCookieName, verifyDashboardHint } from "@/lib/tekid/dashboard-hint"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
+import { getTekidAuthContext } from "@/lib/tekid/server"
 
 const socialLinks = [
   {
@@ -26,26 +28,21 @@ function Separator() {
   return <li aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
 }
 
+// Reads only local cookies, so the icon is in the initial HTML: the last
+// verified hint decides the first paint and the client revalidates quietly.
 async function DashboardNavItem() {
-  const auth = await getDashboardAuthContext().catch((error: unknown) => {
+  const auth = await getTekidAuthContext().catch((error: unknown) => {
     if (error instanceof TekidProfileContractError) return null
-    if (error instanceof TekidAuthorizationError && error.status === 503) return null
     throw error
   })
+  if (!auth?.isAuthenticated) return null
 
-  if (
-    !auth?.isAuthenticated ||
-    !auth.canAccessDashboard ||
-    !auth.role ||
-    !auth.permissions.includes("submissions:read")
-  ) return null
-
+  const hint = (await cookies()).get(dashboardHintCookieName)?.value
   return (
-    <li className="inline-flex">
-      <Link href="/admin" aria-label="Dashboard" title="Dashboard" className={linkClassName}>
-        <LayoutDashboard aria-hidden="true" className="h-4 w-4" />
-      </Link>
-    </li>
+    <DashboardNavLink
+      initialAllowed={verifyDashboardHint(hint, auth.claims.sub)}
+      className={linkClassName}
+    />
   )
 }
 
@@ -68,9 +65,7 @@ export default function SiteNav() {
           </Link>
         </li>
 
-        <Suspense fallback={null}>
-          <DashboardNavItem />
-        </Suspense>
+        <DashboardNavItem />
 
         <Separator />
 
