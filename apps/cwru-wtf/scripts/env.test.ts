@@ -141,6 +141,109 @@ test('production requires HTTPS while development can use the Portless origin', 
   );
 });
 
+test('Vercel Preview derives HTTPS from its stable branch hostname when the origin is absent', () => {
+  for (const baseUrl of [undefined, '']) {
+    const input = {
+      ...testEnvironment,
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'preview',
+      VERCEL_BRANCH_URL: 'project-git-feature-team.vercel.app',
+      VERCEL_URL: 'project-deployment-hash-team.vercel.app',
+      LOGTO_BASE_URL: baseUrl,
+    };
+    assert.equal(
+      createApplicationEnv(input).LOGTO_BASE_URL,
+      'https://project-git-feature-team.vercel.app'
+    );
+    assert.equal(input.LOGTO_BASE_URL, baseUrl);
+  }
+});
+
+test('explicit Preview origins win and keep their existing validation', () => {
+  const input = {
+    ...testEnvironment,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'preview',
+    VERCEL_BRANCH_URL: 'https://malformed-unused-hostname.example',
+  };
+  for (const hostname of ['custom-preview.example.org', 'project-git-existing-team.vercel.app']) {
+    assert.equal(
+      createApplicationEnv({ ...input, LOGTO_BASE_URL: `https://${hostname}/` }).LOGTO_BASE_URL,
+      `https://${hostname}`
+    );
+  }
+  for (const baseUrl of [' ', 'http://preview.example.org', 'https://preview.example.org/path']) {
+    assert.throws(
+      () => createApplicationEnv({ ...input, LOGTO_BASE_URL: baseUrl }),
+      /LOGTO_BASE_URL/
+    );
+  }
+});
+
+test('Preview rejects missing or malformed branch hostnames without exposing their values', () => {
+  for (const hostname of [
+    undefined,
+    '',
+    ' ',
+    'https://preview.example.org',
+    '//preview.example.org',
+    'preview.example.org/path',
+    'preview.example.org?query=value',
+    'preview.example.org#fragment',
+    'user:password@preview.example.org',
+    'preview.example.org:443',
+    ' preview.example.org',
+    'preview.example.org\n',
+    'preview. example.org',
+    'preview..example.org',
+    '-preview.example.org',
+    'preview-.example.org',
+    'preview_name.example.org',
+    'preview.example.org.',
+    'preview\\example.org',
+    'preview%2eexample.org',
+    '127.0.0.1',
+    '[::1]',
+    `${'a'.repeat(64)}.example.org`,
+    `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.org`,
+  ]) {
+    assert.throws(
+      () => createApplicationEnv({
+        ...testEnvironment,
+        NODE_ENV: 'production',
+        VERCEL_ENV: 'preview',
+        VERCEL_BRANCH_URL: hostname,
+        VERCEL_URL: 'project-deployment-hash-team.vercel.app',
+        LOGTO_BASE_URL: undefined,
+      }),
+      { message: 'Invalid environment variables: VERCEL_BRANCH_URL' }
+    );
+  }
+});
+
+test('production and local environments still require an explicit origin', () => {
+  for (const vercelEnv of [undefined, '', 'development', 'production']) {
+    for (const nodeEnv of ['development', 'production']) {
+      const input = {
+        ...testEnvironment,
+        NODE_ENV: nodeEnv,
+        VERCEL_ENV: vercelEnv,
+        VERCEL_BRANCH_URL: 'project-git-feature-team.vercel.app',
+      };
+      for (const baseUrl of [undefined, '']) {
+        assert.throws(
+          () => createApplicationEnv({ ...input, LOGTO_BASE_URL: baseUrl }),
+          /LOGTO_BASE_URL/
+        );
+      }
+      assert.equal(
+        createApplicationEnv({ ...input, LOGTO_BASE_URL: 'https://cwru.wtf' }).LOGTO_BASE_URL,
+        'https://cwru.wtf'
+      );
+    }
+  }
+});
+
 test('defaults NODE_ENV to development and rejects unknown modes', () => {
   for (const mode of [undefined, '']) {
     assert.equal(

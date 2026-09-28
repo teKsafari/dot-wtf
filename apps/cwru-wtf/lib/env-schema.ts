@@ -3,8 +3,22 @@ import { z } from 'zod';
 
 const nonblank = z.string().refine((value) => value.trim().length > 0);
 const logtoId = z.string().regex(/^[A-Za-z0-9_-]+$/);
+const previewHostname = z.string().max(253).regex(
+  /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
+).refine((value) => !/\s/.test(value));
 
 export function createApplicationEnv(runtimeEnvironment: Record<string, string | undefined>) {
+  // Copy before deriving defaults or letting empty-string normalization mutate it.
+  const runtimeEnv = { ...runtimeEnvironment };
+  if (runtimeEnv.VERCEL_ENV === 'preview' && !runtimeEnv.LOGTO_BASE_URL) {
+    const hostname = previewHostname.safeParse(runtimeEnv.VERCEL_BRANCH_URL);
+    if (!hostname.success) {
+      throw new Error('Invalid environment variables: VERCEL_BRANCH_URL');
+    }
+    // Vercel's stable branch alias is trusted deployment configuration, not a request header.
+    runtimeEnv.LOGTO_BASE_URL = `https://${hostname.data}`;
+  }
+
   const origin = z.string().url().superRefine((value, context) => {
     let url: URL;
     try {
@@ -51,8 +65,7 @@ export function createApplicationEnv(runtimeEnvironment: Record<string, string |
       TALLY_WEBHOOK_SECRET: nonblank.optional(),
       TALLY_FIELD_KEYS: z.string().optional(),
     },
-    // Copy the runtime input because empty-string normalization can mutate it.
-    runtimeEnv: { ...runtimeEnvironment },
+    runtimeEnv,
     emptyStringAsUndefined: true,
     onValidationError(issues) {
       const names = issues.map((issue) => {
