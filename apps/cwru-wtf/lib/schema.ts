@@ -1,4 +1,5 @@
-import { pgTable, serial, text, timestamp, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, boolean, integer, jsonb } from 'drizzle-orm/pg-core';
+import type { SocialLinks } from './member-profile-fields';
 
 export const submissions = pgTable('submissions', {
   id: serial('id').primaryKey(),
@@ -33,6 +34,7 @@ export const memberProfiles = pgTable('member_profiles', {
   wtfIdea: text('wtf_idea').notNull().default(''),
   currentProject: text('current_project').notNull().default(''),
   youtubeLink: text('youtube_link').notNull().default(''),
+  socialLinks: jsonb('social_links').$type<SocialLinks>().notNull().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
