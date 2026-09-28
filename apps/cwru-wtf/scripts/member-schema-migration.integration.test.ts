@@ -250,3 +250,206 @@ describe('member split migration and deployed-app compatibility', { skip: !testU
     assert.deepEqual(await sequence(), { last_value: '2147483647', is_called: true });
   });
 });
+
+describe('targeted administrator approval migration', { skip: !testUrl, concurrency: false }, () => {
+  const client = postgres(testUrl!, { max: 3, onnotice: () => {} });
+  const migration = '0013_approve_ignas_admin';
+  const applyApproval = async () => {
+    const script = await readFile(`${folder}${migration}.sql`, 'utf8');
+    await client.begin(async (tx) => {
+      for (const statement of script.split('--> statement-breakpoint')) {
+        if (statement.trim()) await tx.unsafe(statement);
+      }
+    });
+  };
+  const sequence = async () => (await client`SELECT last_value::text, is_called FROM member_number_seq`)[0]!;
+  const snapshot = async () => ({
+    users: await client`SELECT * FROM users ORDER BY tekid_user_id`,
+    profiles: await client`SELECT * FROM profiles ORDER BY user_id`,
+    memberships: await client`SELECT * FROM memberships ORDER BY user_id`,
+    audits: await client`SELECT * FROM member_audit_logs ORDER BY id`,
+    counter: await client`SELECT * FROM member_number_counter ORDER BY id`,
+  });
+  const readMembership = async (id: string) => (await client`SELECT m.* FROM memberships m
+    JOIN users u ON u.id=m.user_id WHERE u.tekid_user_id=${id}`)[0]!;
+  const markers = async () => client`SELECT * FROM member_audit_logs WHERE details->>'migration'=${migration} ORDER BY id`;
+  const seed = async (id: string, email: string, options: {
+    verified?: boolean; status?: string; role?: string; memberNumber?: number; approvedAt?: Date;
+  } = {}) => client.begin(async (tx) => {
+    const [user] = await tx`INSERT INTO users (tekid_user_id,email,email_verified,created_at,updated_at)
+      VALUES (${id},${email},${options.verified ?? true},'2025-01-01','2025-02-01') RETURNING id`;
+    await tx`INSERT INTO profiles (user_id,name,picture,categories,institution,other_category,whatsapp,
+      bio,wtf_idea,current_project,youtube_link,social_links,created_at,updated_at)
+      VALUES (${user!.id},${`Chosen ${id}`},'https://example.org/photo.png','["Research","Other"]',
+        'School, city','Robots','+15555550123','Saved bio','Saved idea','Saved project',
+        'https://example.org/video','{"portfolio":"https://example.org","github":"https://github.com/example"}',
+        '2025-01-01','2025-02-01')`;
+    await tx`INSERT INTO memberships (user_id,status,role,member_number,approved_at,created_at,updated_at)
+      VALUES (${user!.id},${options.status ?? 'draft'},${options.role ?? 'admin'},
+        ${options.memberNumber ?? null},${options.approvedAt ?? null},'2025-01-01','2025-02-01')`;
+    return user!.id as string;
+  });
+
+  before(async () => {
+    assert.equal((await client`SELECT current_database() AS name`)[0]!.name, 'dot_wtf_split_migration_test');
+  });
+  after(async () => { await client.end(); });
+  beforeEach(async () => {
+    await client`DROP SCHEMA public CASCADE`;
+    await client`CREATE SCHEMA public`;
+    await client.begin(async (tx) => {
+      for (const entry of journal.entries.filter(({ idx }) => idx <= 12)) {
+        const script = await readFile(`${folder}${entry.tag}.sql`, 'utf8');
+        for (const statement of script.split('--> statement-breakpoint')) {
+          if (statement.trim()) await tx.unsafe(statement);
+        }
+      }
+    });
+  });
+
+  test('the intended verified pending applicant becomes an approved administrator with an automatic number and audit marker', async () => {
+    await seed('intended-admin', 'IGNAS@TEKSAFARI.ORG', { status: 'pending', role: 'member' });
+    await seed('existing-member', 'member@example.org', { role: 'member', status: 'approved', memberNumber: 40, approvedAt: new Date('2025-01-01') });
+    await client`SELECT setval('member_number_seq',120,false)`;
+    await applyApproval();
+    const membership = await readMembership('intended-admin');
+    assert.equal(membership.status, 'approved');
+    assert.equal(membership.role, 'admin');
+    assert.equal(membership.member_number, 120);
+    assert.ok(membership.approved_at instanceof Date);
+    assert.ok(membership.reviewed_at instanceof Date);
+    assert.equal(typeof membership.reviewed_by, 'string');
+    const audit = await markers();
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0]!.target_id, 'intended-admin');
+    assert.equal(audit[0]!.actor_id, 'operator:migration:0013');
+    assert.equal(audit[0]!.action, 'member.bootstrap');
+    assert.deepEqual(audit[0]!.details, {
+      migration,
+      before: { status: 'pending', role: 'member', memberNumber: null },
+      after: { status: 'approved', role: 'admin', memberNumber: 120 },
+    });
+    assert.equal((await client`SELECT next_number FROM member_number_counter WHERE id=1`)[0]!.next_number, 121);
+    assert.equal(Number((await client`SELECT nextval('member_number_seq') AS n`)[0]!.n), 121);
+  });
+
+  test('approval preserves an existing number, identity, all profile answers, and every other account', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org', { status: 'pending', memberNumber: 7 });
+    await seed('unrelated', 'unrelated@example.org', { role: 'member', status: 'approved', memberNumber: 50, approvedAt: new Date('2025-01-01') });
+    const original = await snapshot();
+    const originalSequence = await sequence();
+    const originalMembership = await readMembership('intended-admin');
+    const otherMembership = await readMembership('unrelated');
+    await applyApproval();
+    const current = await snapshot();
+    assert.deepEqual(current.users, original.users);
+    assert.deepEqual(current.profiles, original.profiles);
+    assert.deepEqual(await readMembership('unrelated'), otherMembership);
+    const target = await readMembership('intended-admin');
+    assert.equal(target.id, originalMembership.id);
+    assert.equal(target.user_id, originalMembership.user_id);
+    assert.equal(target.member_number, 7);
+    assert.equal(target.status, 'approved');
+    assert.equal(target.role, 'admin');
+    assert.deepEqual(target.created_at, originalMembership.created_at);
+    assert.equal(target.submitted_at, originalMembership.submitted_at);
+    assert.deepEqual(await sequence(), originalSequence);
+    assert.deepEqual(current.counter, original.counter);
+  });
+
+  test('databases without the target account remain unchanged and consume no member number', async () => {
+    const empty = await snapshot();
+    const emptySequence = await sequence();
+    await applyApproval();
+    assert.deepEqual(await snapshot(), empty);
+    assert.deepEqual(await sequence(), emptySequence);
+    await seed('someone-else', 'someone@example.org', { role: 'member' });
+    const unrelated = await snapshot();
+    await applyApproval();
+    assert.deepEqual(await snapshot(), unrelated);
+    assert.deepEqual(await sequence(), emptySequence);
+  });
+
+  test('unverified, ambiguous, revoked, and incomplete accounts fail before granting access or consuming numbers', async () => {
+    await seed('unverified-target', 'ignas@teksafari.org', { verified: false });
+    const unverified = await snapshot();
+    const initialSequence = await sequence();
+    await assert.rejects(applyApproval);
+    assert.deepEqual(await snapshot(), unverified);
+    assert.deepEqual(await sequence(), initialSequence);
+    await client`UPDATE users SET email_verified=true WHERE tekid_user_id='unverified-target'`;
+    await seed('second-target', 'IGNAS@TEKSAFARI.ORG');
+    const ambiguous = await snapshot();
+    await assert.rejects(applyApproval);
+    assert.deepEqual(await snapshot(), ambiguous);
+    assert.deepEqual(await sequence(), initialSequence);
+    await client`DELETE FROM users WHERE tekid_user_id='second-target'`;
+    for (const status of ['rejected','suspended']) {
+      await client`UPDATE memberships SET status=${status}`;
+      const revoked = await snapshot();
+      await assert.rejects(applyApproval);
+      assert.deepEqual(await snapshot(), revoked);
+      assert.deepEqual(await sequence(), initialSequence);
+    }
+    await client`UPDATE memberships SET status='draft'`;
+    await client`DELETE FROM profiles`;
+    const missingProfile = await snapshot();
+    await assert.rejects(applyApproval);
+    assert.deepEqual(await snapshot(), missingProfile);
+    await client`INSERT INTO profiles (user_id) SELECT id FROM users`;
+    await client`DELETE FROM memberships`;
+    const missingMembership = await snapshot();
+    await assert.rejects(applyApproval);
+    assert.deepEqual(await snapshot(), missingMembership);
+    assert.deepEqual(await sequence(), initialSequence);
+  });
+
+  test('the durable migration marker prevents a rerun from restoring revoked administrator access', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org');
+    await applyApproval();
+    assert.equal((await markers()).length, 1);
+    await client`UPDATE memberships SET status='suspended',role='member',reviewed_by='another-admin',reviewed_at=now()
+      WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='intended-admin')`;
+    const revoked = await snapshot();
+    const originalSequence = await sequence();
+    await applyApproval();
+    assert.deepEqual(await snapshot(), revoked);
+    assert.deepEqual(await sequence(), originalSequence);
+    assert.equal((await markers()).length, 1);
+    await client`DELETE FROM users WHERE tekid_user_id='intended-admin'`;
+    await seed('recreated-identity', 'ignas@teksafari.org');
+    const recreated = await snapshot();
+    await applyApproval();
+    assert.deepEqual(await snapshot(), recreated);
+    assert.deepEqual(await sequence(), originalSequence);
+  });
+
+  test('an already approved administrator keeps the number and approval date while gaining a durable marker', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org', { status: 'approved', memberNumber: 5, approvedAt: new Date('2025-01-01') });
+    const before = await readMembership('intended-admin');
+    const originalSequence = await sequence();
+    await applyApproval();
+    const after = await readMembership('intended-admin');
+    assert.deepEqual(after, before);
+    assert.equal(after.id, before.id);
+    assert.equal(after.member_number, 5);
+    assert.deepEqual(after.approved_at, before.approved_at);
+    assert.equal(after.role, 'admin');
+    assert.equal(after.status, 'approved');
+    assert.equal((await markers()).length, 1);
+    assert.deepEqual(await sequence(), originalSequence);
+    const once = await snapshot();
+    await applyApproval();
+    assert.deepEqual(await snapshot(), once);
+  });
+
+  test('exhaustion rolls back the approval and audit without wrapping or partially granting access', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org');
+    await client`SELECT setval('member_number_seq',2147483647,false)`;
+    const original = await snapshot();
+    await assert.rejects(applyApproval);
+    assert.deepEqual(await snapshot(), original);
+    assert.equal((await markers()).length, 0);
+    assert.equal((await sequence()).last_value, '2147483647');
+  });
+});

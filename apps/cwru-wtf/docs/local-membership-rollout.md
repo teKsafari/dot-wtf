@@ -59,6 +59,8 @@ Confirm the target before running `pnpm db:migrate`: `drizzle.config.ts` consume
 
 ## Bootstrap and recovery
 
+Migration `0013_approve_ignas_admin` performs the requested one-time bootstrap of the existing verified `ignas@teksafari.org` account. It approves the membership, grants `admin`, preserves an existing number or allocates one, and records a durable `member.bootstrap` audit marker. Other accounts and profile answers remain unchanged. It skips databases without that account, rejects ambiguous or unverified matches and revoked memberships, and never regrants access after a successful application, even if the SQL is replayed. It does not create an automatic grant for future sign-ins.
+
 If there is no usable imported administrator, the intended operator must first sign in with a verified email and visit `/profile` to create a local row:
 
 ```bash
