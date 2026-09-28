@@ -3,8 +3,8 @@ import { NextResponse } from "next/server"
 export async function POST() {
   return NextResponse.json(
     {
-      error: "Applications have moved. Please use the current application form.",
-      applicationUrl: "https://tally.so/r/lbp7OX",
+      error: "Applications have moved. Sign in and complete your member profile.",
+      applicationUrl: "/profile",
     },
     { status: 410 },
   )

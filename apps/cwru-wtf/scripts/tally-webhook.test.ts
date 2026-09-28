@@ -373,37 +373,12 @@ test('requires the official Tally submission timestamp', () => {
   );
 });
 
-test('rejects an oversized webhook before signature verification', async () => {
-  const environment = {
-    TALLY_WEBHOOK_SECRET: process.env.TALLY_WEBHOOK_SECRET,
-    TALLY_FORM_ID: process.env.TALLY_FORM_ID,
-    TALLY_FIELD_KEYS: process.env.TALLY_FIELD_KEYS,
-  };
-
-  process.env.TALLY_WEBHOOK_SECRET = 'test-secret';
-  process.env.TALLY_FORM_ID = FORM_ID;
-  process.env.TALLY_FIELD_KEYS = JSON.stringify(FIELD_KEYS);
-
-  try {
-    const { POST } = await import('../app/api/tally/webhook/route');
-    const response = await POST(
-      new Request('http://localhost/api/tally/webhook', {
-        method: 'POST',
-        body: new Uint8Array(1_000_001),
-      })
-    );
-
-    assert.equal(response.status, 413);
-    assert.deepEqual(await response.json(), {
-      error: 'Webhook payload is too large',
-    });
-  } finally {
-    for (const [name, value] of Object.entries(environment)) {
-      if (value === undefined) {
-        delete process.env[name];
-      } else {
-        process.env[name] = value;
-      }
-    }
-  }
+test('retired webhook directs applications to the profile without accepting data', async () => {
+  const { POST } = await import('../app/api/tally/webhook/route');
+  const response = await POST();
+  assert.equal(response.status, 410);
+  assert.deepEqual(await response.json(), {
+    error: 'Applications have moved to member profiles.',
+    applicationUrl: '/profile',
+  });
 });

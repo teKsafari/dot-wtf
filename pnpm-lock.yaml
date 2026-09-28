@@ -246,9 +246,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.70.0(react@19.2.0))
-      '@logto/api':
-        specifier: ^1.43.0
-        version: 1.43.0
       '@logto/next':
         specifier: ^4.2.11
         version: 4.2.11(next@16.3.5(@types/node@22.15.3)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))
@@ -430,6 +427,9 @@ importers:
         specifier: ^3.25.67
         version: 3.25.67
     devDependencies:
+      '@logto/api':
+        specifier: ^1.43.0
+        version: 1.43.0
       '@next/env':
         specifier: 16.3.3
         version: 16.3.3

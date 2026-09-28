@@ -6,8 +6,8 @@ import AdminDashboard, {
 } from '@/components/admin/admin-dashboard';
 import {
   getDashboardAuthContext,
-  TekidAuthorizationError,
-} from '@/lib/tekid/authorization';
+  AuthorizationError,
+} from '@/lib/authorization';
 import { Button } from '@/components/ui/button';
 import { TekidProfileContractError } from '@/lib/tekid/profile';
 import { db } from '@/lib/db';
@@ -18,13 +18,13 @@ export default async function AdminPage() {
     if (error instanceof TekidProfileContractError) {
       redirect('/profile');
     }
-    if (error instanceof TekidAuthorizationError && error.status === 503) {
+    if (error instanceof AuthorizationError && error.status === 503) {
       return error;
     }
     throw error;
   });
 
-  if (auth instanceof TekidAuthorizationError) {
+  if (auth instanceof AuthorizationError) {
     return (
       <AdminAccessMessage
         title="Admin access is temporarily unavailable"
@@ -38,7 +38,7 @@ export default async function AdminPage() {
     redirect('/api/tekid/sign-in?returnTo=/admin');
   }
 
-  if (!auth.canAccessDashboard || !auth.role || !auth.permissions.includes('submissions:read')) {
+  if (!auth.canAccessDashboard || !auth.role || !auth.permissions.includes('members:read')) {
     return (
       <AdminAccessMessage
         title="Dashboard access is required"
@@ -67,9 +67,9 @@ export default async function AdminPage() {
         email: auth.claims.email,
         name: auth.claims.name,
         role: auth.role,
-        canManageSubmissions: auth.permissions.includes('submissions:manage'),
         canReadMembers: auth.permissions.includes('members:read'),
-        canAddMembers: auth.permissions.includes('members:invite'),
+        canReviewMembers: auth.permissions.includes('members:review'),
+        canRenumberMembers: auth.role === 'admin' && auth.permissions.includes('members:renumber'),
         canAssignRoles: auth.role === 'admin' && auth.permissions.includes('members:assign-roles'),
       }}
       initialSubmissions={serializedSubmissions}

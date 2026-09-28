@@ -1,346 +1,342 @@
 import './test-env';
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { after, before, beforeEach, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import postgres from 'postgres';
+import * as schema from '../lib/schema';
+import { memberAuditLogs, memberProfiles, submissions } from '../lib/schema';
+import { createProfileStore, importedProfileFields, ProfileSubmissionError } from '../lib/member-profiles';
+import { emptyProfileFields, profileFieldsSchema, profileLimits, type ProfileFields } from '../lib/member-profile-fields';
+import type { AuthSession } from '../lib/tekid/types';
 
-import {
-  emptyProfileFields, profileFieldsFromFormData, profileFieldsSchema, profileLimits, safeSocialLinks,
-} from '../lib/member-profile-fields';
-import { createMemberProfiles, importedProfileFields } from '../lib/member-profiles';
-import { createMemberDirectory } from '../lib/tekid/directory';
-import { TekidManagementError, type TekidManagementClient } from '../lib/tekid/management';
-import type { AuthContextType, AuthSession } from '../lib/tekid/types';
+// Explicit opt-in: this suite resets a disposable database, never app DATABASE_URL.
+const testUrl = process.env.PROFILE_TEST_DATABASE_URL;
+if (testUrl) {
+  const parsed = new URL(testUrl);
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)
+    || !['127.0.0.1', 'localhost'].includes(parsed.hostname)
+    || !/^\/dot_wtf_[a-z_]+_test$/.test(parsed.pathname)
+    || parsed.search || parsed.hash) {
+    throw new Error('PROFILE_TEST_DATABASE_URL must name a disposable local dot_wtf_*_test database without query parameters.');
+  }
+}
 
 const claims = (overrides: Partial<AuthSession> = {}): AuthSession => ({
-  sub: 'ada', name: 'Ada Lovelace', username: null, email: 'Ada@Example.org',
-  email_verified: true, picture: null, ...overrides,
+  sub: 'ada', name: 'Ada from tekID', username: null, email: 'Ada@Example.org',
+  email_verified: true, picture: 'https://images.example.org/ada.png', ...overrides,
 });
-const application = {
-  wtfIdea: '  A loom that writes poetry  ',
-  currentProject: 'Analytical engine notes',
-  youtubeLink: 'https://www.youtube.com/watch?v=abc',
+const completeFields = (overrides: Partial<ProfileFields> = {}): ProfileFields => ({
+  ...emptyProfileFields, name: 'Ada Lovelace', institution: 'CWRU, Cleveland', whatsapp: '+1 555 000 0000',
+  categories: ['Research'], wtfIdea: 'A loom that writes poetry', currentProject: 'Analytical engine notes',
+  youtubeLink: 'https://youtu.be/abc', portfolio: 'https://ada.dev/', ...overrides,
+});
+const legacyApplication = {
+  name: 'Ada from the old application', email: 'ada@example.org',
+  categories: JSON.stringify(['Research', 'Other']), otherCategory: 'Poetry machines', whatsapp: '+1 555 111 1111',
+  wtfIdea: '  A loom that writes poetry  ', currentProject: 'An old analytical engine',
+  youtubeLink: 'https://www.youtube.com/watch?v=abc', isApproved: true,
 };
-
-test('profile fields are trimmed, optional, and limited', () => {
-  assert.deepEqual(profileFieldsSchema.parse({
-    ...emptyProfileFields, bio: '  Builder  ', currentProject: ' x ', youtubeLink: ' https://youtu.be/abc ',
-  }), { ...emptyProfileFields, bio: 'Builder', currentProject: 'x', youtubeLink: 'https://youtu.be/abc' });
-  assert.equal(profileFieldsSchema.safeParse(emptyProfileFields).success, true);
-
-  for (const [field, max] of [['bio', profileLimits.bio], ['wtfIdea', profileLimits.text], ['currentProject', profileLimits.text]] as const) {
-    assert.equal(profileFieldsSchema.safeParse({ ...emptyProfileFields, [field]: 'x'.repeat(max) }).success, true);
-    assert.equal(profileFieldsSchema.safeParse({ ...emptyProfileFields, [field]: 'x'.repeat(max + 1) }).success, false);
+describe('local profile persistence', { skip: !testUrl, concurrency: false }, () => {
+  const client = postgres(testUrl!, { max: 5, onnotice: () => {} });
+  const database = drizzle(client, { schema });
+  const profiles = createProfileStore(database);
+  async function readProfile(userId = 'ada') {
+    const [row] = await database.select().from(memberProfiles).where(eq(memberProfiles.tekidUserId, userId));
+    assert.ok(row, `Expected a profile for ${userId}`);
+    return row;
   }
-});
+  const audits = () => database.select().from(memberAuditLogs).where(eq(memberAuditLogs.action, 'profile.submitted'));
 
-test('submitted CRLF line breaks count once, as the textarea counts them', () => {
-  const lines = 'x'.repeat(98);
-  const bio = Array.from({ length: 5 }, () => lines).join('\r\n');
-  assert.equal(bio.replace(/\r\n/g, '\n').length, 494);
-  const parsed = profileFieldsSchema.safeParse({ ...emptyProfileFields, bio: `${bio}\r\nabcde` });
-  assert.equal(parsed.success, true);
-  assert.equal(parsed.success && parsed.data.bio.includes('\r'), false);
-  assert.equal(parsed.success && parsed.data.bio.length, profileLimits.bio);
-});
+  before(async () => {
+    const [identity] = await client`SELECT current_database() AS name`;
+    assert.equal(identity.name, new URL(testUrl!).pathname.slice(1));
+    await migrate(database, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });
+  });
+  after(async () => { await client.end(); });
+  beforeEach(async () => {
+    // Supply a separate database per integration suite to avoid shared-table resets.
+    await client`TRUNCATE TABLE member_profiles, member_audit_logs, action_logs, submissions RESTART IDENTITY`;
+  });
 
-test('form data yields exactly the profile fields, as strings', () => {
-  const formData = new FormData();
-  formData.set('bio', 'Hi');
-  formData.set('github', 'octocat');
-  formData.set('$ACTION_ID_abc', 'ignored');
-  formData.set('tekidUserId', 'someone-else');
-  formData.set('portfolio', new Blob(['not text']));
-  assert.deepEqual(profileFieldsFromFormData(formData), { ...emptyProfileFields, bio: 'Hi', github: 'octocat' });
-});
+  it('first sign-in creates only a draft even when identity claims advertise elevated roles', async () => {
+    const identity = Object.assign(claims(), { roles: ['admin'], organization_roles: ['instance-lead'] });
+    const view = await profiles.getProfile(identity);
+    const row = await readProfile();
+    assert.equal(view.status, 'draft');
+    assert.equal(view.memberNumber, null);
+    assert.equal(view.submittedAt, null);
+    assert.equal(view.imported, false);
+    assert.deepEqual(view.fields, { ...emptyProfileFields, name: identity.name });
+    assert.equal(row.email, identity.email);
+    assert.equal(row.emailVerified, true);
+    assert.equal(row.picture, identity.picture);
+    assert.equal(row.role, 'member');
+    assert.equal(row.approvedAt, null);
+    assert.equal((await audits()).length, 0);
+  });
 
-test('the video field accepts only plain web links', () => {
-  for (const link of ['https://www.youtube.com/watch?v=abc', 'http://drive.google.com/file/1']) {
-    assert.equal(profileFieldsSchema.safeParse({ ...emptyProfileFields, youtubeLink: link }).success, true);
-  }
-  for (const link of [
-    'javascript:alert(1)', 'data:text/html,hi', 'mailto:ada@example.org', 'youtube.com/watch?v=abc',
-    'https://user:secret@example.org/video', 'not a link',
-  ]) {
-    assert.equal(profileFieldsSchema.safeParse({ ...emptyProfileFields, youtubeLink: link }).success, false, link);
-  }
-});
-
-const parseLink = (field: 'github' | 'instagram' | 'linkedin' | 'portfolio', value: string) =>
-  profileFieldsSchema.safeParse({ ...emptyProfileFields, [field]: value });
-
-test('social handles and links become https links on the right site', () => {
-  const cases = {
-    github: [
-      ['octocat', 'https://github.com/octocat'],
-      ['@octocat', 'https://github.com/octocat'],
-      ['github.com/octocat', 'https://github.com/octocat'],
-      ['http://www.github.com/octocat/', 'https://www.github.com/octocat/'],
-    ],
-    instagram: [
-      ['ada.lovelace', 'https://www.instagram.com/ada.lovelace/'],
-      ['@ada_lovelace', 'https://www.instagram.com/ada_lovelace/'],
-      ['https://instagram.com/ada.lovelace', 'https://instagram.com/ada.lovelace'],
-    ],
-    linkedin: [
-      ['ada-lovelace', 'https://www.linkedin.com/in/ada-lovelace'],
-      ['linkedin.com/in/ada-lovelace', 'https://linkedin.com/in/ada-lovelace'],
-      ['https://www.linkedin.com/in/ada-lovelace/', 'https://www.linkedin.com/in/ada-lovelace/'],
-    ],
-    portfolio: [
-      ['ada.dev', 'https://ada.dev/'],
-      ['http://ada.dev/work', 'http://ada.dev/work'],
-      ['https://ada.dev/?ref=cwru', 'https://ada.dev/?ref=cwru'],
-    ],
-  } as const;
-
-  for (const [field, pairs] of Object.entries(cases) as [keyof typeof cases, readonly (readonly [string, string])[]][]) {
-    for (const [input, expected] of pairs) {
-      const parsed = parseLink(field, input);
-      assert.equal(parsed.success && parsed.data[field], expected, `${field}: ${input}`);
+  it('identity refresh preserves every local status, role, member number, edited name, and review decision', async () => {
+    const approvedAt = new Date('2026-09-01T12:00:00Z');
+    const submittedAt = new Date('2026-08-30T12:00:00Z');
+    for (const [index, status] of (['draft', 'pending', 'approved', 'rejected', 'suspended'] as const).entries()) {
+      const id = `member-${status}`;
+      await database.insert(memberProfiles).values({
+        tekidUserId: id, email: 'before@example.org', emailVerified: true, name: 'My local name',
+        status, role: 'admin', memberNumber: index + 1, approvedAt, submittedAt,
+        reviewedBy: 'reviewer', reviewedAt: approvedAt, bio: 'My local bio', picture: 'https://images.example.org/old.png',
+      });
+      const view = await profiles.getProfile(claims({ sub: id, name: 'Different identity name', email: 'new@example.org', email_verified: false }));
+      const row = await readProfile(id);
+      assert.equal(view.status, status);
+      assert.equal(view.memberNumber, index + 1);
+      assert.equal(view.fields.name, 'My local name');
+      assert.equal(view.fields.bio, 'My local bio');
+      assert.equal(row.role, 'admin');
+      assert.equal(row.email, 'new@example.org');
+      assert.equal(row.emailVerified, false);
+      assert.equal(row.picture, claims().picture);
+      assert.deepEqual(row.approvedAt, approvedAt);
+      assert.deepEqual(row.submittedAt, submittedAt);
+      assert.equal(row.reviewedBy, 'reviewer');
+      assert.deepEqual(row.reviewedAt, approvedAt);
     }
-  }
-  assert.equal(parseLink('github', '   ').success && parseLink('github', '   ').data?.github, '');
-});
+  });
 
-test('social links reject other sites and unsafe schemes', () => {
-  const rejected = {
-    github: ['javascript:alert(1)', 'https://evil.example/github.com/octocat', 'https://github.com', 'github.com', 'bad--name', 'https://user:pw@github.com/octocat'],
-    instagram: ['https://instagram.com.evil.example/ada', 'instagram.com', 'has space', 'data:text/html,hi'],
-    linkedin: ['https://notlinkedin.com/in/ada', 'ab', 'mailto:ada@example.org'],
-    portfolio: ['javascript:alert(1)', 'data:text/html,hi', 'localhost:3000', 'not a site', 'ftp://ada.dev/file'],
-  } as const;
-
-  for (const [field, values] of Object.entries(rejected) as [keyof typeof rejected, readonly string[]][]) {
-    for (const value of values) {
-      assert.equal(parseLink(field, value).success, false, `${field}: ${value}`);
+  it('unsafe identity pictures are never persisted', async () => {
+    for (const [index, picture] of ['javascript:alert(1)', 'http://images.example.org/a.png', 'https://user:pw@images.example.org/a.png'].entries()) {
+      await profiles.getProfile(claims({ sub: `picture-${index}`, picture }));
+      assert.equal((await readProfile(`picture-${index}`)).picture, null);
     }
-  }
-});
+  });
 
-test('normalized links that outgrow the limit are rejected, never saved and dropped', () => {
-  const tooLong = [
-    ['github', `github.com/${'a'.repeat(189)}`],
-    ['github', `http://github.com/${'a'.repeat(182)}`],
-    ['linkedin', `https://www.linkedin.com/in/${'é'.repeat(60)}`],
-    ['portfolio', `example.com/${'a'.repeat(488)}`],
-    ['portfolio', `https://example.com/${'é'.repeat(100)}`],
-  ] as const;
-  for (const [field, input] of tooLong) {
-    const parsed = parseLink(field, input);
-    assert.equal(parsed.success, false, `${field}: ${input.slice(0, 40)}`);
-    assert.equal(!parsed.success && parsed.error.issues[0].message, 'This link is too long.');
-  }
-});
+  it('verified case-insensitive email imports the latest legacy application once without granting membership', async () => {
+    const createdAt = new Date('2026-01-01T12:00:00Z');
+    await database.insert(submissions).values([
+      { ...legacyApplication, currentProject: 'Older response', createdAt },
+      { ...legacyApplication, createdAt },
+      { ...legacyApplication, email: 'someone-else@example.org', currentProject: 'Another person', createdAt: new Date('2026-09-01') },
+    ]);
+    const first = await profiles.getProfile(claims());
+    assert.equal(first.imported, true);
+    assert.equal(first.status, 'draft');
+    assert.equal((await readProfile()).role, 'member');
+    assert.equal(first.memberNumber, null);
+    assert.deepEqual(first.fields, importedProfileFields(legacyApplication));
+    const edited = completeFields({ name: 'My chosen name', bio: 'I edited this', currentProject: 'A newer local project' });
+    await profiles.saveProfile(claims(), edited);
+    await database.insert(submissions).values({ ...legacyApplication, currentProject: 'Later legacy submission' });
+    const again = await profiles.getProfile(claims());
+    assert.equal(again.imported, false);
+    assert.deepEqual(again.fields, edited);
+  });
 
-test('Instagram dot handles and non-default ports are rejected', () => {
-  for (const value of ['.', '..', '@..', '.ada', 'ada.', 'ada..lovelace']) {
-    assert.equal(parseLink('instagram', value).success, false, `instagram: ${value}`);
-  }
-  for (const [field, value] of [
-    ['github', 'https://github.com:22/ada'],
-    ['github', 'github.com:8080/ada'],
-    ['instagram', 'https://www.instagram.com:444/ada'],
-    ['linkedin', 'https://www.linkedin.com:8443/in/ada'],
-  ] as const) {
-    assert.equal(parseLink(field, value).success, false, `${field}: ${value}`);
-  }
-  const upgraded = parseLink('github', 'http://github.com:443/ada');
-  assert.equal(upgraded.success && upgraded.data.github, 'https://github.com/ada');
-});
+  it('unverified email cannot read matching legacy application answers', async () => {
+    await database.insert(submissions).values(legacyApplication);
+    const view = await profiles.getProfile(claims({ email_verified: false }));
+    assert.equal(view.imported, false);
+    assert.deepEqual(view.fields, { ...emptyProfileFields, name: claims().name });
+    assert.equal((await readProfile()).emailVerified, false);
+    assert.equal(view.status, 'draft');
+  });
 
-test('a portfolio host with a port is a site, not a URL scheme', () => {
-  const parsed = parseLink('portfolio', 'ada.dev:8080/work');
-  assert.equal(parsed.success && parsed.data.portfolio, 'https://ada.dev:8080/work');
-  assert.equal(parseLink('portfolio', 'localhost:3000').success, false);
-});
+  it('verification after an unverified first visit imports only missing legacy answers', async () => {
+    await database.insert(submissions).values(legacyApplication);
+    const unverified = claims({ email_verified: false });
+    await profiles.getProfile(unverified);
+    await profiles.saveProfile(unverified, {
+      ...emptyProfileFields, name: 'My edited name', bio: 'My bio', currentProject: 'My saved project',
+      categories: ['Architecture'], github: 'https://github.com/ada', institution: 'My institution',
+    });
+    const view = await profiles.getProfile(claims());
+    assert.equal(view.imported, true);
+    assert.equal(view.fields.name, 'My edited name');
+    assert.equal(view.fields.bio, 'My bio');
+    assert.equal(view.fields.currentProject, 'My saved project');
+    assert.equal(view.fields.institution, 'My institution');
+    assert.equal(view.fields.github, 'https://github.com/ada');
+    assert.deepEqual(view.fields.categories, ['Architecture']);
+    assert.equal(view.fields.wtfIdea, legacyApplication.wtfIdea.trim());
+    assert.equal(view.fields.youtubeLink, legacyApplication.youtubeLink);
+    assert.equal(view.fields.whatsapp, legacyApplication.whatsapp);
+    assert.equal(view.status, 'draft');
+    assert.equal(view.memberNumber, null);
+  });
 
-test('every accepted link round-trips through storage unchanged', () => {
-  const inputs = {
-    github: ['octocat', '@octocat', 'github.com/octocat', 'http://www.github.com/octocat/', 'https://gist.github.com/octocat/abc', `github.com/${'a'.repeat(170)}`, 'HTTPS://GitHub.com/Octocat'],
-    instagram: ['ada.lovelace', '@ada_lovelace', 'instagram.com/ada', 'https://m.instagram.com/ada/', 'a'.repeat(30)],
-    linkedin: ['ada-lovelace', 'linkedin.com/in/ada', 'https://uk.linkedin.com/in/ada?trk=x', 'https://www.linkedin.com/company/cwru', `https://www.linkedin.com/in/${'é'.repeat(10)}`],
-    portfolio: ['ada.dev', 'http://ada.dev/work', 'ada.dev:8080', 'https://bücher.example/', `example.com/${'a'.repeat(470)}`],
-  } as const;
-  for (const [field, values] of Object.entries(inputs) as [keyof typeof inputs, readonly string[]][]) {
-    for (const value of values) {
-      const first = parseLink(field, value);
-      assert.equal(first.success, true, `${field} accepts ${value.slice(0, 40)}`);
-      const stored = first.success ? first.data[field] : '';
-      const again = parseLink(field, stored);
-      assert.equal(again.success && again.data[field], stored, `${field} is stable for ${value.slice(0, 40)}`);
-      assert.deepEqual(safeSocialLinks({ [field]: stored }), { [field]: stored }, `${field} survives the read check`);
+  it('an intentionally cleared draft name stays blank when identity details refresh', async () => {
+    await profiles.saveProfile(claims(), completeFields());
+    await profiles.saveProfile(claims(), completeFields({ name: '' }));
+    const view = await profiles.getProfile(claims({ name: 'A changed tekID name' }));
+    assert.equal(view.fields.name, '');
+    assert.equal((await readProfile()).name, '');
+  });
+
+  it('verification changes never repeat an import or restore deliberately erased answers', async () => {
+    await database.insert(submissions).values(legacyApplication);
+    assert.equal((await profiles.getProfile(claims())).imported, true);
+    await profiles.saveProfile(claims(), emptyProfileFields);
+    await profiles.getProfile(claims({ email_verified: false }));
+    const view = await profiles.getProfile(claims());
+    assert.equal(view.imported, false);
+    assert.deepEqual(view.fields, emptyProfileFields);
+    const imports = await database.select().from(memberAuditLogs).where(eq(memberAuditLogs.action, 'profile.legacy-imported'));
+    assert.equal(imports.length, 1);
+    assert.deepEqual(imports[0].details, { applicationFound: true });
+  });
+
+  it('a verified import attempt with no match is not repeated after a later verification change', async () => {
+    await profiles.getProfile(claims());
+    await database.insert(submissions).values(legacyApplication);
+    await profiles.getProfile(claims({ email_verified: false }));
+    const view = await profiles.getProfile(claims());
+    assert.equal(view.imported, false);
+    assert.deepEqual(view.fields, { ...emptyProfileFields, name: claims().name });
+    const imports = await database.select().from(memberAuditLogs).where(eq(memberAuditLogs.action, 'profile.legacy-imported'));
+    assert.equal(imports.length, 1);
+    assert.deepEqual(imports[0].details, { applicationFound: false });
+  });
+
+  it('a verified identity without a matching application has no imported answers', async () => {
+    await database.insert(submissions).values({ ...legacyApplication, email: 'another@example.org' });
+    const view = await profiles.getProfile(claims());
+    assert.equal(view.imported, false);
+    assert.deepEqual(view.fields, { ...emptyProfileFields, name: claims().name });
+  });
+
+  it('pre-migration profiles retain every stored answer and access decision while legacy fields are hydrated', async () => {
+    await database.insert(submissions).values(legacyApplication);
+    const approvedAt = new Date('2026-08-01T12:00:00Z');
+    await database.insert(memberProfiles).values({
+      tekidUserId: 'ada', email: '', name: 'Already edited', bio: 'Local bio', wtfIdea: '',
+      currentProject: 'Local project', youtubeLink: 'https://youtu.be/local',
+      socialLinks: { github: 'https://github.com/ada', portfolio: 'https://local.example.org/' },
+      status: 'suspended', role: 'instance-lead', memberNumber: 17, approvedAt,
+    });
+    const view = await profiles.getProfile(claims());
+    assert.equal(view.fields.name, 'Already edited');
+    assert.equal(view.fields.bio, 'Local bio');
+    assert.equal(view.fields.wtfIdea, '');
+    assert.equal(view.fields.currentProject, 'Local project');
+    assert.equal(view.fields.youtubeLink, 'https://youtu.be/local');
+    assert.equal(view.fields.github, 'https://github.com/ada');
+    assert.equal(view.fields.portfolio, 'https://local.example.org/');
+    assert.deepEqual(view.fields.categories, ['Research', 'Other']);
+    assert.equal(view.fields.whatsapp, legacyApplication.whatsapp);
+    const row = await readProfile();
+    assert.equal(row.status, 'suspended');
+    assert.equal(row.role, 'instance-lead');
+    assert.equal(row.memberNumber, 17);
+    assert.deepEqual(row.approvedAt, approvedAt);
+  });
+
+  it('an incomplete draft saves without submitting or granting membership', async () => {
+    const view = await profiles.saveProfile(claims(), { ...emptyProfileFields, bio: 'Still thinking', categories: ['Other'] });
+    assert.equal(view.status, 'draft');
+    assert.equal(view.submittedAt, null);
+    assert.equal(view.memberNumber, null);
+    assert.equal(view.fields.bio, 'Still thinking');
+    assert.equal((await audits()).length, 0);
+  });
+
+  it('a complete verified application becomes pending with one audit, even if submitted again', async () => {
+    const view = await profiles.saveProfile(claims(), completeFields(), 'submit');
+    assert.equal(view.status, 'pending');
+    assert.ok(view.submittedAt);
+    assert.equal(view.memberNumber, null);
+    assert.equal((await readProfile()).role, 'member');
+    const [audit] = await audits();
+    assert.deepEqual({ actor: audit.actorId, target: audit.targetId, details: audit.details }, {
+      actor: 'ada', target: 'ada', details: { previousStatus: 'draft' },
+    });
+    const again = await profiles.saveProfile(claims(), completeFields({ bio: 'Updated during review' }), 'submit');
+    assert.equal(again.status, 'pending');
+    assert.equal(again.submittedAt, view.submittedAt);
+    assert.equal((await audits()).length, 1);
+  });
+
+  it('unverified submission is rejected without creating a profile or audit', async () => {
+    await assert.rejects(profiles.saveProfile(claims({ email_verified: false }), completeFields(), 'submit'), ProfileSubmissionError);
+    assert.deepEqual(await database.select().from(memberProfiles), []);
+    assert.deepEqual(await audits(), []);
+  });
+
+  it('incomplete submission leaves a previously saved draft intact', async () => {
+    const before = await profiles.saveProfile(claims(), completeFields({ bio: 'Saved draft' }));
+    await assert.rejects(profiles.saveProfile(claims(), { ...emptyProfileFields, bio: 'Unsaved invalid submission' }, 'submit'));
+    const after = await profiles.getProfile(claims());
+    assert.deepEqual(after.fields, before.fields);
+    assert.equal(after.status, 'draft');
+    assert.equal((await audits()).length, 0);
+  });
+
+  it('suspended members can save fields but cannot submit or alter access', async () => {
+    await profiles.saveProfile(claims(), completeFields());
+    await database.update(memberProfiles).set({ status: 'suspended', role: 'instance-lead', memberNumber: 24 }).where(eq(memberProfiles.tekidUserId, 'ada'));
+    const before = await readProfile();
+    await assert.rejects(profiles.saveProfile(claims({ email: 'new@example.org' }), completeFields({ bio: 'Should roll back' }), 'submit'), ProfileSubmissionError);
+    assert.deepEqual(await readProfile(), before);
+    const saved = await profiles.saveProfile(claims(), completeFields({ bio: 'An allowed edit' }));
+    assert.equal(saved.status, 'suspended');
+    assert.equal(saved.memberNumber, 24);
+    assert.equal(saved.fields.bio, 'An allowed edit');
+    assert.equal((await readProfile()).role, 'instance-lead');
+    assert.equal((await audits()).length, 0);
+  });
+
+  it('approved edits retain approval, elevated role, review metadata, and member number', async () => {
+    await profiles.saveProfile(claims(), completeFields(), 'submit');
+    const approvedAt = new Date('2026-09-20T12:00:00Z');
+    await database.update(memberProfiles).set({ status: 'approved', role: 'admin', memberNumber: 42, approvedAt, reviewedAt: approvedAt, reviewedBy: 'another-admin' }).where(eq(memberProfiles.tekidUserId, 'ada'));
+    const before = await readProfile();
+    for (const intent of ['save', 'submit'] as const) {
+      const view = await profiles.saveProfile(claims(), completeFields({ bio: `Edited with ${intent}`, github: '@ada' }), intent);
+      const row = await readProfile();
+      assert.equal(view.status, 'approved');
+      assert.equal(view.memberNumber, 42);
+      assert.equal(view.fields.github, 'https://github.com/ada');
+      assert.equal(row.role, 'admin');
+      assert.deepEqual(row.approvedAt, approvedAt);
+      assert.deepEqual(row.submittedAt, before.submittedAt);
+      assert.deepEqual(row.reviewedAt, approvedAt);
+      assert.equal(row.reviewedBy, 'another-admin');
     }
-  }
-});
-
-test('stored social links are re-checked before they are shown', () => {
-  assert.deepEqual(safeSocialLinks({
-    github: 'https://github.com/octocat',
-    instagram: 'javascript:alert(1)',
-    linkedin: 42,
-    portfolio: 'https://ada.dev/',
-    twitter: 'https://twitter.com/ada',
-  }), { github: 'https://github.com/octocat', portfolio: 'https://ada.dev/' });
-  for (const value of [null, undefined, 'https://github.com/octocat', [], 7]) {
-    assert.deepEqual(safeSocialLinks(value), {});
-  }
-});
-
-test('imported application answers always satisfy the profile schema', () => {
-  assert.deepEqual(importedProfileFields(application), {
-    ...emptyProfileFields, wtfIdea: 'A loom that writes poetry', currentProject: 'Analytical engine notes',
-    youtubeLink: 'https://www.youtube.com/watch?v=abc',
+    assert.equal((await audits()).length, 1);
   });
 
-  const imported = importedProfileFields({
-    wtfIdea: 'x'.repeat(profileLimits.text + 50), currentProject: '', youtubeLink: 'javascript:alert(1)',
-  });
-  assert.equal(imported.wtfIdea.length, profileLimits.text);
-  assert.equal(imported.youtubeLink, '');
-  assert.equal(profileFieldsSchema.safeParse(imported).success, true);
-});
-
-function profileFixture(options: { saved?: typeof emptyProfileFields; application?: typeof application; raceWith?: typeof emptyProfileFields } = {}) {
-  const calls: string[] = [];
-  let saved = options.saved ?? null;
-  const profiles = createMemberProfiles({
-    async findProfile(userId) {
-      calls.push(`find:${userId}`);
-      return saved;
-    },
-    async findApplication(email) {
-      calls.push(`application:${email}`);
-      return options.application ?? null;
-    },
-    async insertProfile(userId, fields) {
-      calls.push(`insert:${userId}`);
-      if (options.raceWith) {
-        saved = options.raceWith;
-        return false;
-      }
-      saved = fields;
-      return true;
-    },
-  });
-  return { profiles, calls };
-}
-
-test('a saved profile is never overwritten by the application', async () => {
-  const saved = { ...emptyProfileFields, bio: 'Edited by me' };
-  const { profiles, calls } = profileFixture({ saved, application });
-  assert.deepEqual(await profiles.getProfile(claims()), { fields: saved, imported: false });
-  assert.deepEqual(calls, ['find:ada']);
-});
-
-test('a verified email imports the matching application once', async () => {
-  const { profiles, calls } = profileFixture({ application });
-  const first = await profiles.getProfile(claims());
-  assert.equal(first.imported, true);
-  assert.deepEqual(first.fields, importedProfileFields(application));
-  assert.deepEqual(calls, ['find:ada', 'application:Ada@Example.org', 'insert:ada']);
-
-  assert.deepEqual(await profiles.getProfile(claims()), { fields: first.fields, imported: false });
-});
-
-test('an unverified email never claims an application', async () => {
-  const { profiles, calls } = profileFixture({ application });
-  assert.deepEqual(await profiles.getProfile(claims({ email_verified: false })), {
-    fields: emptyProfileFields, imported: false,
-  });
-  assert.deepEqual(calls, ['find:ada']);
-});
-
-test('no matching application leaves an empty, unsaved profile', async () => {
-  const { profiles, calls } = profileFixture();
-  assert.deepEqual(await profiles.getProfile(claims()), { fields: emptyProfileFields, imported: false });
-  assert.deepEqual(calls, ['find:ada', 'application:Ada@Example.org']);
-});
-
-test('a concurrent first visit returns the profile that won the insert', async () => {
-  const winner = { ...emptyProfileFields, bio: 'Saved in another tab' };
-  const { profiles } = profileFixture({ application, raceWith: winner });
-  assert.deepEqual(await profiles.getProfile(claims()), { fields: winner, imported: false });
-});
-
-const organization = { organizationId: 'cwru', adminRoleId: 'admin-role', instanceLeadRoleId: 'lead-role' };
-const user = (id: string, name: string | null, overrides: Record<string, unknown> = {}) => ({
-  id, name, primaryEmail: `${id}@example.org`, avatar: null, isSuspended: false,
-  customData: { private: true }, organizationRoles: [], ...overrides,
-});
-
-function directoryFixture(options: {
-  auth?: AuthContextType;
-  users?: ReturnType<typeof user>[];
-  fail?: boolean;
-} = {}) {
-  const requests: string[] = [];
-  const bioRequests: string[][] = [];
-  const users = options.users ?? [];
-  const management: TekidManagementClient = {
-    async request(method, path, requestOptions = {}) {
-      requests.push(`${method} ${path}`);
-      if (options.fail) throw new TekidManagementError(503);
-      const page = Number(requestOptions.query?.page ?? 1);
-      const size = Number(requestOptions.query?.page_size ?? 20);
-      return {
-        data: users.slice((page - 1) * size, page * size),
-        headers: new Headers({ 'total-number': String(users.length) }),
-      };
-    },
-  };
-  const getDirectory = createMemberDirectory({
-    getAuthContext: async () => options.auth ?? { isAuthenticated: true, claims: claims() },
-    management,
-    organization,
-    async loadCards(ids) {
-      bioRequests.push(ids);
-      return new Map([
-        ['ada', { bio: 'Poet of numbers', links: { github: 'https://github.com/ada' } }],
-        ['grace', { bio: '', links: {} }],
-      ]);
-    },
-  });
-  return { getDirectory, requests, bioRequests };
-}
-
-test('signed-out visitors get no member data', async () => {
-  const { getDirectory, requests } = directoryFixture({ auth: { isAuthenticated: false, claims: null } });
-  assert.deepEqual(await getDirectory(), { status: 'signed-out' });
-  assert.deepEqual(requests, []);
-});
-
-test('only active organization members can open the directory', async () => {
-  const outsider = directoryFixture({ users: [user('grace', 'Grace Hopper')] });
-  assert.deepEqual(await outsider.getDirectory(), { status: 'not-member' });
-  assert.deepEqual(outsider.bioRequests, []);
-
-  const suspended = directoryFixture({ users: [user('ada', 'Ada', { isSuspended: true }), user('grace', 'Grace')] });
-  assert.deepEqual(await suspended.getDirectory(), { status: 'not-member' });
-});
-
-test('members see active members with name, photo, bio, and links only', async () => {
-  const { getDirectory, requests, bioRequests } = directoryFixture({
-    users: [
-      user('grace', 'grace hopper', { avatar: 'https://images.example.org/grace.png' }),
-      user('nameless', '  '),
-      user('ada', 'Ada Lovelace', { avatar: 'javascript:alert(1)' }),
-      user('mallory', 'Mallory', { isSuspended: true }),
-    ],
+  it('rejected members resubmit without choosing their identity, role, or number', async () => {
+    await profiles.saveProfile(claims(), completeFields());
+    await database.update(memberProfiles).set({ status: 'rejected' }).where(eq(memberProfiles.tekidUserId, 'ada'));
+    const forged = Object.assign(completeFields(), { status: 'approved', role: 'admin', memberNumber: 1, tekidUserId: 'another-user', email: 'someone-else@example.org' });
+    const view = await profiles.saveProfile(claims(), forged, 'submit');
+    const row = await readProfile();
+    assert.equal(view.status, 'pending');
+    assert.equal(row.role, 'member');
+    assert.equal(row.memberNumber, null);
+    assert.equal(row.email, claims().email);
+    assert.equal(row.tekidUserId, claims().sub);
+    assert.equal((await database.select().from(memberProfiles)).length, 1);
+    assert.deepEqual((await audits())[0].details, { previousStatus: 'rejected' });
   });
 
-  assert.deepEqual(await getDirectory(), {
-    status: 'member',
-    viewerId: 'ada',
-    members: [
-      { id: 'ada', name: 'Ada Lovelace', picture: null, bio: 'Poet of numbers', links: { github: 'https://github.com/ada' } },
-      { id: 'grace', name: 'grace hopper', picture: 'https://images.example.org/grace.png', bio: '', links: {} },
-      { id: 'nameless', name: null, picture: null, bio: '', links: {} },
-    ],
+  it('concurrent first visits import once and concurrent submissions create one audit', async () => {
+    await database.insert(submissions).values(legacyApplication);
+    const views = await Promise.all([profiles.getProfile(claims()), profiles.getProfile(claims()), profiles.getProfile(claims())]);
+    assert.equal(views.filter((view) => view.imported).length, 1);
+    assert.equal((await database.select().from(memberProfiles)).length, 1);
+    const saved = await Promise.all([
+      profiles.saveProfile(claims(), completeFields({ bio: 'One tab' }), 'submit'),
+      profiles.saveProfile(claims(), completeFields({ bio: 'Another tab' }), 'submit'),
+    ]);
+    assert.ok(saved.every((view) => view.status === 'pending'));
+    assert.equal((await audits()).length, 1);
   });
-  assert.deepEqual(requests, ['GET /api/organizations/cwru/users']);
-  assert.deepEqual(bioRequests, [['grace', 'nameless', 'ada']]);
-});
 
-test('directory failures are not reported as an empty directory', async () => {
-  const { getDirectory } = directoryFixture({ users: [user('ada', 'Ada')], fail: true });
-  await assert.rejects(getDirectory(), TekidManagementError);
+  it('imported answers are bounded and unsafe video links are discarded', () => {
+    const imported = importedProfileFields({ ...legacyApplication, wtfIdea: 'x'.repeat(profileLimits.text + 50), youtubeLink: 'javascript:alert(1)' });
+    assert.equal(imported.wtfIdea.length, profileLimits.text);
+    assert.equal(imported.youtubeLink, '');
+    assert.equal(profileFieldsSchema.safeParse(imported).success, true);
+  });
 });

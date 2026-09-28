@@ -1,0 +1,80 @@
+name: CWRU.WTF tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/cwru-wtf/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - '.github/workflows/cwru-wtf-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cwru-wtf/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - '.github/workflows/cwru-wtf-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cwru-wtf-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dot_wtf_members_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dot_wtf_members_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Create separate profile and operator fixture databases
+        run: |
+          docker exec "${{ job.services.postgres.id }}" createdb --username=postgres dot_wtf_profile_service_test
+          docker exec "${{ job.services.postgres.id }}" createdb --username=postgres dot_wtf_operator_service_test
+      - name: Test environment, sign-in, and legacy endpoint
+        run: |
+          pnpm --filter cwru-wtf test:env
+          pnpm --filter cwru-wtf test:tekid
+          pnpm --filter cwru-wtf test:tally
+      - name: Test local authorization and membership transactions
+        env:
+          MEMBER_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dot_wtf_members_test
+        run: pnpm --filter cwru-wtf test:admin
+      - name: Test profile validation and persistence
+        env:
+          PROFILE_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dot_wtf_profile_service_test
+        run: pnpm --filter cwru-wtf test:profiles
+      - name: Test membership operator logic and transactions
+        env:
+          OPERATOR_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dot_wtf_operator_service_test
+        run: pnpm --filter cwru-wtf test:operators

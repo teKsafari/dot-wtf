@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
   requireDashboardPermission,
-  TekidAuthorizationError,
-} from '@/lib/tekid/authorization';
+  AuthorizationError,
+} from '@/lib/authorization';
 import { getSubmissionStats } from '@/lib/submissions';
 
 export async function GET() {
@@ -12,7 +12,7 @@ export async function GET() {
     const stats = await getSubmissionStats();
     return NextResponse.json(stats, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
-    if (error instanceof TekidAuthorizationError) {
+    if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('Error fetching stats:', error);

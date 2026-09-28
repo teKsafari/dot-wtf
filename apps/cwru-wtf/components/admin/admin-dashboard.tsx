@@ -12,18 +12,13 @@ import {
   useState,
 } from "react";
 import { signOutFromTekid } from "@/app/profile/actions";
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
-  Archive as ArchiveIcon,
-  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  Check,
   ChevronLeft,
   ChevronRight,
   Inbox,
-  LoaderCircle,
   LogOut,
   RefreshCw,
   Search,
@@ -61,16 +56,15 @@ interface AdminDashboardProps {
     email: string;
     name: string;
     role: "admin" | "instance-lead";
-    canManageSubmissions: boolean;
     canReadMembers: boolean;
-    canAddMembers: boolean;
+    canReviewMembers: boolean;
+    canRenumberMembers: boolean;
     canAssignRoles: boolean;
   };
   initialSubmissions: AdminSubmission[];
 }
 
 type SubmissionFilter = "all" | "pending" | "approved" | "waitlist" | "archive";
-type SubmissionAction = "approve" | "waitlist" | "archive" | "restore";
 
 const PAGE_SIZE = 12;
 
@@ -102,7 +96,7 @@ export default function AdminDashboard({
   admin,
   initialSubmissions,
 }: AdminDashboardProps) {
-  const [activeView, setActiveView] = useState<"applications" | "members">("applications");
+  const [activeView, setActiveView] = useState<"history" | "members">(admin.canReadMembers ? "members" : "history");
   const [submissions, setSubmissions] =
     useState<AdminSubmission[]>(initialSubmissions);
   const [filter, setFilter] = useState<SubmissionFilter>("pending");
@@ -112,10 +106,6 @@ export default function AdminDashboard({
     number | null
   >(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pendingMutation, setPendingMutation] = useState<{
-    submissionId: number;
-    action: SubmissionAction;
-  } | null>(null);
   const requestInFlightRef = useRef(false);
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const queueFocusRestoreIdRef = useRef<number | null>(null);
@@ -308,7 +298,7 @@ export default function AdminDashboard({
         queueFocusRestoreIdRef.current = currentId;
         return null;
       });
-      toast.success("Application queue refreshed.", { position: "top-center" });
+      toast.success("Historical applications refreshed.", { position: "top-center" });
     } catch (error) {
       console.error("Refresh error:", error);
       toast.error(
@@ -318,82 +308,6 @@ export default function AdminDashboard({
     } finally {
       requestInFlightRef.current = false;
       setIsRefreshing(false);
-    }
-  };
-
-  const updateSubmission = async (
-    submissionId: number,
-    action: SubmissionAction,
-  ) => {
-    if (requestInFlightRef.current || !admin.canManageSubmissions) return;
-    requestInFlightRef.current = true;
-    setPendingMutation({ submissionId, action });
-
-    try {
-      const response = await fetch("/api/admin/submissions", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: submissionId, action }),
-      });
-
-      if (response.status === 409) {
-        toast.error(
-          "This application changed elsewhere. Refresh the queue and try again.",
-          { position: "top-center" },
-        );
-        return;
-      }
-
-      if (response.status === 404) {
-        toast.error(
-          "This application is no longer available. Refresh the queue.",
-          {
-            position: "top-center",
-          },
-        );
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error("Failed to update submission");
-      }
-
-      const updatedSubmission = (await response.json()) as AdminSubmission;
-
-      if (!updatedSubmission?.id) {
-        throw new Error("The server returned an invalid submission");
-      }
-
-      setSubmissions((currentSubmissions) =>
-        currentSubmissions.map((submission) =>
-          submission.id === submissionId ? updatedSubmission : submission,
-        ),
-      );
-
-      if (action === "archive" || action === "restore") {
-        queueFocusRestoreIdRef.current = submissionId;
-        setSelectedSubmissionId(null);
-        setPageIndex(0);
-      }
-
-      const successCopy: Record<SubmissionAction, string> = {
-        approve: "Application approved.",
-        waitlist: "Application moved to the waitlist.",
-        archive: "Application archived.",
-        restore: "Application restored.",
-      };
-      toast.success(successCopy[action], { position: "top-center" });
-    } catch (error) {
-      console.error("Update error:", error);
-      toast.error(
-        "Could not save this change. Check your connection and try again.",
-        { position: "top-center" },
-      );
-    } finally {
-      requestInFlightRef.current = false;
-      setPendingMutation(null);
     }
   };
 
@@ -422,10 +336,6 @@ export default function AdminDashboard({
   };
 
   const hasSelectedSubmission = selectedSubmission !== null;
-  const activeAction =
-    pendingMutation?.submissionId === selectedSubmissionId
-      ? pendingMutation.action
-      : null;
 
   return (
     <div className="flex h-[100svh] flex-col overflow-hidden bg-background text-foreground">
@@ -473,7 +383,7 @@ export default function AdminDashboard({
           </div>
         </div>
         <nav aria-label="Dashboard sections" className="mx-auto flex max-w-[1440px] gap-6 px-4 sm:px-6 lg:px-8">
-          {(["applications", "members"] as const).filter((view) => view !== "members" || admin.canReadMembers).map((view) => (
+          {(["members", "history"] as const).filter((view) => view !== "members" || admin.canReadMembers).map((view) => (
             <button
               key={view}
               type="button"
@@ -484,7 +394,7 @@ export default function AdminDashboard({
                 activeView === view ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {view === "applications" ? "Applications" : "Members"}
+              {view === "members" ? "Applications & members" : "Historical applications"}
             </button>
           ))}
         </nav>
@@ -496,7 +406,7 @@ export default function AdminDashboard({
         className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col outline-none lg:px-8"
       >
         {activeView === "members" ? (
-          <MemberManagement canAssignRoles={admin.canAssignRoles} canAddMembers={admin.canAddMembers} />
+          <MemberManagement canAssignRoles={admin.canAssignRoles} canReview={admin.canReviewMembers} canRenumber={admin.canRenumberMembers} />
         ) : <>
         <div
           className={cn(
@@ -510,12 +420,12 @@ export default function AdminDashboard({
               tabIndex={-1}
               className="focus-ring rounded text-xl font-semibold tracking-tight"
             >
-              Applications
+              Historical applications
             </h1>
             <Button
               onClick={refreshSubmissions}
               variant="ghost"
-              disabled={isRefreshing || pendingMutation !== null}
+              disabled={isRefreshing}
               aria-busy={isRefreshing}
               className="h-11 rounded-md px-3 text-xs"
             >
@@ -526,6 +436,8 @@ export default function AdminDashboard({
               {isRefreshing ? "Refreshing…" : "Refresh"}
             </Button>
           </div>
+
+          <p className="mb-4 text-sm leading-6 text-muted-foreground">Read-only records from the earlier application form. Historical approval does not grant membership. Review current profiles in Applications &amp; members.</p>
 
           <div className="flex flex-col-reverse gap-2 border-b border-border lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div
@@ -655,12 +567,10 @@ export default function AdminDashboard({
           >
             {selectedSubmission ? (
               <SubmissionDetail
-                activeAction={activeAction}
-                actionsDisabled={!admin.canManageSubmissions || pendingMutation !== null || isRefreshing}
+                navigationDisabled={isRefreshing}
                 headingRef={detailHeadingRef}
                 nextSubmission={nextSubmission}
                 onBack={returnToQueue}
-                onAction={updateSubmission}
                 onNavigate={navigateToSubmission}
                 previousSubmission={previousSubmission}
                 submission={selectedSubmission}
@@ -738,9 +648,7 @@ function SubmissionRow({
 function SubmissionDetail({
   submission,
   onBack,
-  onAction,
-  activeAction,
-  actionsDisabled,
+  navigationDisabled,
   headingRef,
   previousSubmission,
   nextSubmission,
@@ -748,9 +656,7 @@ function SubmissionDetail({
 }: {
   submission: AdminSubmission;
   onBack: () => void;
-  onAction: (submissionId: number, action: SubmissionAction) => Promise<void>;
-  activeAction: SubmissionAction | null;
-  actionsDisabled: boolean;
+  navigationDisabled: boolean;
   headingRef: Ref<HTMLHeadingElement>;
   previousSubmission: AdminSubmission | null;
   nextSubmission: AdminSubmission | null;
@@ -762,14 +668,7 @@ function SubmissionDetail({
   );
   const videoReferenceUrl = getSafeExternalUrl(submission.youtubeLink);
   const headingId = "submission-detail-" + submission.id;
-  const isPending = submission.isApproved === null;
-  const isArchived = submission.archivedAt !== null;
-  const previousSubmissionStateRef = useRef({
-    id: submission.id,
-    status: submission.isApproved,
-  });
   const detailBodyRef = useRef<HTMLDivElement>(null);
-  const savedStatusRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -781,60 +680,6 @@ function SubmissionDetail({
     return () => window.cancelAnimationFrame(frameId);
   }, [submission.id]);
 
-  useEffect(() => {
-    const previousSubmissionState = previousSubmissionStateRef.current;
-
-    if (
-      previousSubmissionState.id === submission.id &&
-      previousSubmissionState.status !== submission.isApproved &&
-      submission.isApproved !== null
-    ) {
-      savedStatusRef.current?.focus();
-    }
-
-    previousSubmissionStateRef.current = {
-      id: submission.id,
-      status: submission.isApproved,
-    };
-  }, [submission.id, submission.isApproved]);
-
-  const approveButton = (
-    <Button
-      onClick={() => onAction(submission.id, "approve")}
-      disabled={actionsDisabled}
-      aria-busy={activeAction === "approve"}
-      aria-label={"Approve " + submission.name}
-      className="h-11 flex-1 rounded-md px-3 shadow-none active:translate-y-0 active:scale-[0.98] sm:flex-none sm:px-5"
-    >
-      {activeAction === "approve" ? (
-        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
-      ) : (
-        <Check aria-hidden="true" className="h-4 w-4" />
-      )}
-      {activeAction === "approve" ? "Approving…" : "Approve"}
-    </Button>
-  );
-
-  const archiveButton = (
-    <Button
-      onClick={() => onAction(submission.id, "archive")}
-      disabled={actionsDisabled}
-      aria-busy={activeAction === "archive"}
-      aria-label={"Archive " + submission.name}
-      title="Archive"
-      variant="ghost"
-      className="h-11 w-11 shrink-0 rounded-md px-0 text-muted-foreground shadow-none active:translate-y-0 active:scale-[0.98] hover:text-foreground sm:w-auto sm:px-4"
-    >
-      {activeAction === "archive" ? (
-        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
-      ) : (
-        <ArchiveIcon aria-hidden="true" className="h-4 w-4" />
-      )}
-      <span className="hidden sm:inline">
-        {activeAction === "archive" ? "Archiving…" : "Archive"}
-      </span>
-    </Button>
-  );
 
   return (
     <article
@@ -848,10 +693,10 @@ function SubmissionDetail({
           className="focus-ring inline-flex min-h-12 items-center gap-1 rounded px-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-          Applications
+          Historical applications
         </button>
         <ApplicationNavigation
-          disabled={actionsDisabled}
+          disabled={navigationDisabled}
           previousSubmission={previousSubmission}
           nextSubmission={nextSubmission}
           onNavigate={onNavigate}
@@ -859,7 +704,7 @@ function SubmissionDetail({
       </div>
 
       <ApplicationNavigation
-        disabled={actionsDisabled}
+        disabled={navigationDisabled}
         previousSubmission={previousSubmission}
         nextSubmission={nextSubmission}
         onNavigate={onNavigate}
@@ -937,58 +782,8 @@ function SubmissionDetail({
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-border bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 lg:px-6">
-        {isArchived ? (
-          <div className="flex min-h-11 items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground" role="status">
-              Archived · Previously {getStatusTone(submission.isApproved).label}
-            </p>
-            <Button
-              onClick={() => onAction(submission.id, "restore")}
-              disabled={actionsDisabled}
-              aria-busy={activeAction === "restore"}
-              variant="outline"
-              className="h-11 rounded-md shadow-none active:translate-y-0 active:scale-[0.98]"
-            >
-              {activeAction === "restore" ? (
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="h-4 w-4 animate-spin"
-                />
-              ) : (
-                <ArchiveRestore aria-hidden="true" className="h-4 w-4" />
-              )}
-              {activeAction === "restore" ? "Restoring…" : "Restore"}
-            </Button>
-          </div>
-        ) : isPending ? (
-          <div className="flex items-center justify-end gap-2">
-            {archiveButton}
-            <WaitlistSubmissionDialog
-              key={submission.id}
-              activeAction={activeAction}
-              disabled={actionsDisabled}
-              name={submission.name}
-              onWaitlist={() => onAction(submission.id, "waitlist")}
-            />
-            {approveButton}
-          </div>
-        ) : (
-          <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
-            <p
-              ref={savedStatusRef}
-              tabIndex={-1}
-              className="focus-ring rounded text-sm text-muted-foreground"
-              role="status"
-            >
-              {getStatusTone(submission.isApproved).label}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {archiveButton}
-              {submission.isApproved === false ? approveButton : null}
-            </div>
-          </div>
-        )}
+      <footer className="shrink-0 border-t border-border bg-background px-5 py-4 text-sm text-muted-foreground sm:px-8">
+        Historical status: {submission.archivedAt ? "Archived · " : ""}{getStatusTone(submission.isApproved).label}. This record does not control membership.
       </footer>
     </article>
   );
@@ -1097,64 +892,6 @@ function VideoReference({ url, name }: { url: string; name: string }) {
         <span className="sr-only"> (opens in a new tab)</span>
       </a>
     </DetailSection>
-  );
-}
-
-function WaitlistSubmissionDialog({
-  name,
-  disabled,
-  activeAction,
-  onWaitlist,
-}: {
-  name: string;
-  disabled: boolean;
-  activeAction: SubmissionAction | null;
-  onWaitlist: () => Promise<void>;
-}) {
-  return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger asChild>
-        <Button
-          disabled={disabled}
-          aria-busy={activeAction === "waitlist"}
-          aria-label={"Move " + name + " to the waitlist"}
-          variant="outline"
-          className="h-11 flex-1 rounded-md px-3 shadow-none active:translate-y-0 active:scale-[0.98] sm:flex-none sm:px-5"
-        >
-          {activeAction === "waitlist" ? (
-            <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
-          ) : null}
-          {activeAction === "waitlist" ? "Moving…" : "Waitlist"}
-        </Button>
-      </AlertDialog.Trigger>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/25" />
-        <AlertDialog.Content className="focus-ring fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-6 shadow-lg">
-          <AlertDialog.Title className="text-lg font-semibold tracking-tight">
-            Move to the waitlist?
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 break-words text-sm leading-6 text-muted-foreground">
-            {name} will remain available in Waitlist and can be approved later.
-          </AlertDialog.Description>
-          <div className="mt-6 flex justify-end gap-2">
-            <AlertDialog.Cancel asChild>
-              <Button variant="outline" className="h-11 rounded-md shadow-none">
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <AlertDialog.Action asChild>
-              <Button
-                onClick={() => void onWaitlist()}
-                disabled={disabled}
-                className="h-11 rounded-md shadow-none"
-              >
-                Move to waitlist
-              </Button>
-            </AlertDialog.Action>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
   );
 }
 

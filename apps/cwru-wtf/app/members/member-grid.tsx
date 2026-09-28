@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog"
 import { Github, Globe, Instagram, Linkedin, X } from "lucide-react"
 import { ProfileAvatar } from "@/app/profile/profile-controls"
 import { socialLinkLabels, socialPlatforms } from "@/lib/member-profile-fields"
-import type { DirectoryMember } from "@/lib/tekid/member-types"
+import type { DirectoryMember } from "@/lib/member-types"
 
 const unnamed = "Unnamed member"
 
@@ -38,6 +38,9 @@ function MemberCard({ member, isViewer }: { member: DirectoryMember; isViewer: b
             <span className="truncate font-brand font-semibold text-foreground">{name}</span>
             {isViewer ? <YouBadge /> : null}
           </span>
+          {member.memberNumber !== null ? (
+            <span className="mt-1 block font-mono text-xs text-muted-foreground">Member #{member.memberNumber}</span>
+          ) : null}
           <span className="mt-1 line-clamp-2 text-sm text-muted-foreground">
             {member.bio || "No bio yet."}
           </span>
@@ -60,6 +63,7 @@ function MemberCard({ member, isViewer }: { member: DirectoryMember; isViewer: b
               {name}
             </Dialog.Title>
             {isViewer ? <div className="mt-2"><YouBadge /></div> : null}
+            {member.memberNumber !== null ? <p className="mt-2 font-mono text-xs text-muted-foreground">Member #{member.memberNumber}</p> : null}
             <Dialog.Description className="mt-4 whitespace-pre-line break-words text-left text-body text-muted-foreground">
               {member.bio || `${name} hasn’t written a bio yet.`}
             </Dialog.Description>

@@ -38,8 +38,8 @@ export default function Home() {
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Button asChild size="xl">
-            <Link href="/join">
-              Join .wtf
+            <Link href="/profile">
+              Get started
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
