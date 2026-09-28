@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { submissions, actionLogs, adminUsers } from '../lib/schema';
+import { submissions, actionLogs } from '../lib/schema';
 import { config } from 'dotenv';
 
 // Load environment variables
@@ -59,21 +59,7 @@ async function migrate() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `;
-    console.log('  ✅ action_logs table created');
-
-    await newClient`
-      CREATE TABLE IF NOT EXISTS admin_users (
-        id SERIAL PRIMARY KEY,
-        email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'admin',
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-      )
-    `;
-    console.log('  ✅ admin_users table created\n');
+    console.log('  ✅ action_logs table created\n');
 
     // Step 2: Fetch all data from old database
     console.log('📥 Fetching data from old database...');
@@ -82,10 +68,7 @@ async function migrate() {
     console.log(`  Found ${oldSubmissions.length} submissions`);
 
     const oldActionLogs = await oldDb.select().from(actionLogs);
-    console.log(`  Found ${oldActionLogs.length} action logs`);
-
-    const oldAdminUsers = await oldDb.select().from(adminUsers);
-    console.log(`  Found ${oldAdminUsers.length} admin users\n`);
+    console.log(`  Found ${oldActionLogs.length} action logs\n`);
 
     // Step 3: Insert data into new database
     console.log('📤 Inserting data into new database...');
@@ -147,49 +130,18 @@ async function migrate() {
       console.log('  ⏭️  No action logs to migrate');
     }
 
-    // Migrate admin users (preserving IDs)
-    if (oldAdminUsers.length > 0) {
-      await newClient`TRUNCATE TABLE admin_users CASCADE`;
-      
-      for (const admin of oldAdminUsers) {
-        const createdAt = toISOString(admin.createdAt);
-        const updatedAt = toISOString(admin.updatedAt);
-        
-        await newClient`
-          INSERT INTO admin_users (id, email, password_hash, name, role, is_active, created_at, updated_at)
-          VALUES (
-            ${admin.id}, 
-            ${admin.email}, 
-            ${admin.passwordHash}, 
-            ${admin.name}, 
-            ${admin.role}, 
-            ${admin.isActive}, 
-            ${createdAt}::timestamp, 
-            ${updatedAt}::timestamp
-          )
-        `;
-      }
-      await newClient`SELECT setval('admin_users_id_seq', (SELECT MAX(id) FROM admin_users))`;
-      console.log(`  ✅ Migrated ${oldAdminUsers.length} admin users`);
-    } else {
-      console.log('  ⏭️  No admin users to migrate');
-    }
-
     // Step 4: Verify migration
     console.log('\n🔍 Verifying migration...');
     
     const newSubmissionsCount = await newClient`SELECT COUNT(*) as count FROM submissions`;
     const newActionLogsCount = await newClient`SELECT COUNT(*) as count FROM action_logs`;
-    const newAdminUsersCount = await newClient`SELECT COUNT(*) as count FROM admin_users`;
 
     console.log(`  submissions: ${oldSubmissions.length} → ${newSubmissionsCount[0].count}`);
     console.log(`  action_logs: ${oldActionLogs.length} → ${newActionLogsCount[0].count}`);
-    console.log(`  admin_users: ${oldAdminUsers.length} → ${newAdminUsersCount[0].count}`);
 
     const allMatch = 
       oldSubmissions.length === Number(newSubmissionsCount[0].count) &&
-      oldActionLogs.length === Number(newActionLogsCount[0].count) &&
-      oldAdminUsers.length === Number(newAdminUsersCount[0].count);
+      oldActionLogs.length === Number(newActionLogsCount[0].count);
 
     if (allMatch) {
       console.log('\n✅ Migration completed successfully!');
