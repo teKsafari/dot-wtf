@@ -3,12 +3,13 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import Wordmark from "@/components/wordmark"
-import { tekidProfilePath } from "@/lib/tekid/config"
+import { getMemberProfile } from "@/lib/member-profiles"
+import { tekidMembersPath, tekidProfilePath } from "@/lib/tekid/config"
 import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 import { getTekidAuthContext } from "@/lib/tekid/server"
 import { signInWithTekid, signOutFromTekid } from "./actions"
-import { ProfileAvatar, ProfileSubmitButton } from "./profile-controls"
+import { ProfileAvatar, ProfileForm, ProfileSubmitButton } from "./profile-controls"
 
 export const metadata: Metadata = {
   title: "Your profile - CWRU.WTF",
@@ -37,6 +38,14 @@ export default async function ProfilePage({
     redirect(tekidProfilePath)
   }
 
+  const signedIn = !(auth instanceof TekidProfileContractError) && auth.isAuthenticated
+  const profile = signedIn
+    ? await getMemberProfile(auth.claims).catch(() => {
+        console.error("Unable to load a member profile")
+        return null
+      })
+    : null
+
   const errorMessage =
     params.error === "sign-in"
       ? "We couldn’t complete your sign-in. Please try again."
@@ -53,7 +62,7 @@ export default async function ProfilePage({
       </header>
 
       <main className="flex flex-1 items-center justify-center px-6 pb-24">
-        <section aria-labelledby="profile-heading" className="w-full max-w-sm text-center">
+        <section aria-labelledby="profile-heading" className={`w-full text-center ${signedIn ? "max-w-xl" : "max-w-sm"}`}>
           {auth instanceof TekidProfileContractError ? (
             <>
               <h1 id="profile-heading" className="font-brand text-3xl font-semibold tracking-tight">
@@ -92,10 +101,39 @@ export default async function ProfilePage({
                 {auth.claims.name}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">Your dot wtf profile</p>
-              <Suspense fallback={null}>
-                <DashboardLink />
-              </Suspense>
-              <form action={signOutFromTekid} className="mt-7">
+              <div className="mt-4 flex flex-wrap justify-center gap-x-6">
+                <a
+                  href="https://id.teksafari.org/account/profile"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={secondaryLinkClassName}
+                >
+                  Edit name or photo in tekID
+                </a>
+                <Link href={tekidMembersPath} className={secondaryLinkClassName}>
+                  Members
+                </Link>
+                <Suspense fallback={null}>
+                  <DashboardLink />
+                </Suspense>
+              </div>
+              <div className="mt-10">
+                {profile ? (
+                  <>
+                    {profile.imported ? (
+                      <p role="status" className="mb-8 rounded-xl bg-muted px-4 py-3 text-left text-sm text-muted-foreground">
+                        We filled in your WTF idea, project, and video from your cwru.wtf application.
+                      </p>
+                    ) : null}
+                    <ProfileForm initialFields={profile.fields} />
+                  </>
+                ) : (
+                  <p role="alert" className="text-sm text-destructive">
+                    We couldn’t load your profile details. Please try again in a moment.
+                  </p>
+                )}
+              </div>
+              <form action={signOutFromTekid} className="mt-12">
                 <ProfileSubmitButton pendingLabel="Signing out…" variant="outline">
                   Sign out
                 </ProfileSubmitButton>
@@ -132,6 +170,9 @@ export default async function ProfilePage({
   )
 }
 
+const secondaryLinkClassName =
+  "focus-ring inline-flex min-h-11 items-center rounded-sm text-sm underline underline-offset-4 hover:text-muted-foreground"
+
 async function DashboardLink() {
   const auth = await getDashboardAuthContext().catch((error: unknown) => {
     if (error instanceof TekidAuthorizationError && error.status === 503) return null
@@ -146,10 +187,7 @@ async function DashboardLink() {
   ) return null
 
   return (
-    <Link
-      href="/admin"
-      className="focus-ring mt-4 inline-flex min-h-11 items-center rounded-sm text-sm underline underline-offset-4 hover:text-muted-foreground"
-    >
+    <Link href="/admin" className={secondaryLinkClassName}>
       Open dashboard
     </Link>
   )

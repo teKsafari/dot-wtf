@@ -28,7 +28,7 @@ const addMemberSchema = z.object({
   role: memberRoleSchema,
 }).strict();
 const updateRoleSchema = z.object({ role: memberRoleSchema }).strict();
-const userSchema = z.object({
+export const userSchema = z.object({
   id: userIdSchema,
   name: z.string().nullable(),
   primaryEmail: z.string().nullable(),
@@ -50,7 +50,7 @@ function parseInput<T extends z.ZodTypeAny>(schema: T, input: unknown): z.infer<
   return result.data;
 }
 
-function safePicture(value: string | null): string | null {
+export function safePicture(value: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);

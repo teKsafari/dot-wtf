@@ -62,7 +62,7 @@ Register these exact URLs in that application:
 
 Set `LOGTO_BASE_URL=https://cwru.wtf` and all nine Logto environment variables in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.org/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Organization roles are read through the Management API rather than copied from ID-token claims.
 
-The callback reconstructs its public URL from `LOGTO_BASE_URL` so it works behind Portless and deployment proxies. `GET /api/tekid/sign-in` starts sign-in with an allowlisted destination of `/profile` or `/admin`; visiting `/login` starts the admin tekID flow. Sign-out returns to `/profile`. The old `/test-profile` path permanently redirects to `/profile`, preserving query parameters for existing links and in-progress authentication flows.
+The callback reconstructs its public URL from `LOGTO_BASE_URL` so it works behind Portless and deployment proxies. `GET /api/tekid/sign-in` starts sign-in with an allowlisted destination of `/profile`, `/members`, or `/admin`; visiting `/login` starts the admin tekID flow. Sign-out returns to `/profile`. The old `/test-profile` path permanently redirects to `/profile`, preserving query parameters for existing links and in-progress authentication flows.
 
 `AuthContextType` is a discriminated union: `isAuthenticated: true` guarantees non-null `sub`, `name`, `email`, and `email_verified` in `claims`; `isAuthenticated: false` has `claims: null`. `name` is the required display name. `username` is a separate, optional identifier that can be unassigned; the application exposes it as `string | null` and never uses it as a substitute for `name`. A missing, blank, or malformed username becomes `null` without blocking sign-in. The server validates required fields once and projects only the application fields. `email_verified` must be a boolean, and `false` is valid; verification requirements are a separate authorization decision. Components can narrow with `isAuthenticated` alone to render `claims.name`. The profile page passes only name and picture to its client avatar; a missing or broken picture shows initials.
 
@@ -71,6 +71,20 @@ An authenticated session with missing or malformed required claims raises `Tekid
 The tekID app logo uses the shared symbol-and-`wtf` wordmark assets in `public/dot-wtf-wordmark.svg` and `public/dot-wtf-wordmark-dark.svg`. Both are self-contained vectors without an entity prefix, ready for any `<entity-name>.wtf` app. The artwork is sized to 32px inside a transparent 40px-high canvas to fit Logto's logo slot. Regenerate them on macOS with `swift scripts/export-wordmark.swift`. Logto's light/dark app logo fields contain SVG data URLs from these files, so the preview works before deploying the assets. The favicon fields use `https://cwru.wtf/icon.svg`.
 
 The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses `https://cwru.wtf/bgbg.jpg` as a centered, cover-sized background with a subtle dark overlay. App CSS replaces the shared tekID CSS, so the file includes the existing form styling before the background rule. Keep this copy in sync if the shared form styling changes; update the image URL here for another entity's background.
+
+## Member profiles and directory
+
+tekID owns each member's name and photo; the profile page links to tekID for changes. Everything else a member edits on [/profile](http://dot-wtf.localhost:1355/profile) lives in the `member_profiles` table, keyed by tekID user ID: a bio, their WTF idea, current project, and video link. Any signed-in tekID user can edit their own profile; the save action only ever writes the signed-in user's row.
+
+The first time someone opens their profile, if their tekID email is verified and matches an application's email (case-insensitively, most recent application first), the WTF idea, project, and video are copied from that application into their profile. This happens once. After that the profile is theirs, and later edits or applications never overwrite it. An unverified email never claims an application.
+
+[/members](http://dot-wtf.localhost:1355/members) shows every active member of this site's Logto organization as a grid; selecting someone opens a preview with their name, photo, and bio. Only active organization members can open it. Suspended accounts are hidden and cannot view it. The directory never exposes emails, roles, or the other profile fields. Membership comes from the same Management API credentials as the dashboard.
+
+Apply the migration before deploying:
+
+```bash
+pnpm db:migrate
+```
 
 ## Organization roles and dashboard access
 
@@ -85,7 +99,8 @@ The app's TypeScript types, dashboard inputs, and CLI keep the short aliases. Ty
 
 | Access | Ordinary member | `instance-lead` | `admin` |
 | --- | --- | --- | --- |
-| View their own profile | Yes | Yes | Yes |
+| View and edit their own profile | Yes | Yes | Yes |
+| View the member directory | Yes | Yes | Yes |
 | Open dashboard and manage submissions | No | Yes | Yes |
 | View members and add existing tekID users as ordinary members | No | Yes | Yes |
 | Assign or remove `admin` / `instance-lead` roles | No | No | Yes |
@@ -108,7 +123,7 @@ pnpm create-admin --email member@example.org --role admin
 
 The same command accepts `--role instance-lead`. It requires a unique existing primary-email match, rejects suspended accounts, verifies that the configured role ID belongs to the expected prefixed User organization role, and adds membership and that role without replacing existing assignments. It reads back the assignment before reporting success. Rerunning is safe: Logto ignores memberships and role assignments already present. It never creates local passwords. This command uses the management credential directly and is intended for trusted operators; routine changes use the dashboard's admin-only role checks.
 
-Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
+Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm test:profiles`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
 
 ---
 

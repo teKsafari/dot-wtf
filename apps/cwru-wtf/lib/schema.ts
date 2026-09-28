@@ -37,6 +37,17 @@ export const adminUsers = pgTable('admin_users', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// tekID owns name and photo; this holds what members edit on their dot wtf profile.
+export const memberProfiles = pgTable('member_profiles', {
+  tekidUserId: text('tekid_user_id').primaryKey(),
+  bio: text('bio').notNull().default(''),
+  wtfIdea: text('wtf_idea').notNull().default(''),
+  currentProject: text('current_project').notNull().default(''),
+  youtubeLink: text('youtube_link').notNull().default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export type Submission = typeof submissions.$inferSelect;
 export type NewSubmission = typeof submissions.$inferInsert;
 export type ActionLog = typeof actionLogs.$inferSelect;

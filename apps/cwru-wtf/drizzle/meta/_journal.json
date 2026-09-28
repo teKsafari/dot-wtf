@@ -57,6 +57,13 @@
       "when": 1789745286357,
       "tag": "0007_parched_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790537762027,
+      "tag": "0008_member_profiles",
+      "breakpoints": true
     }
   ]
 }

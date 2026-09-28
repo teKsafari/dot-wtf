@@ -16,7 +16,8 @@
     "test:tally": "tsx --test scripts/tally-webhook.test.ts",
     "test:env": "tsx --test scripts/env.test.ts",
     "test:tekid": "node --conditions=react-server --import tsx --test scripts/tekid.test.ts scripts/tekid-redirects.test.ts",
-    "test:admin": "node --conditions=react-server --import tsx --test scripts/tekid-authorization.test.ts"
+    "test:admin": "node --conditions=react-server --import tsx --test scripts/tekid-authorization.test.ts",
+    "test:profiles": "node --conditions=react-server --import tsx --test scripts/member-profiles.test.ts"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",

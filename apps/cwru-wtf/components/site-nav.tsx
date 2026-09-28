@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { Calendar, Github, Instagram, LayoutDashboard, UserRound } from "lucide-react"
+import { Calendar, Github, Instagram, LayoutDashboard, UserRound, Users } from "lucide-react"
 import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 
@@ -59,6 +59,12 @@ export default function SiteNav() {
         <li className="inline-flex">
           <Link href="/calendar" aria-label="Calendar" className={linkClassName}>
             <Calendar aria-hidden="true" className="h-4 w-4" />
+          </Link>
+        </li>
+
+        <li className="inline-flex">
+          <Link href="/members" aria-label="Members" title="Members" className={linkClassName}>
+            <Users aria-hidden="true" className="h-4 w-4" />
           </Link>
         </li>
 
