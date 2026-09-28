@@ -85,6 +85,13 @@
       "when": 1790627633579,
       "tag": "0011_local_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790636223520,
+      "tag": "0012_split_member_tables",
+      "breakpoints": true
     }
   ]
 }

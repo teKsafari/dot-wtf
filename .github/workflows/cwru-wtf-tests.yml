@@ -57,10 +57,15 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Create separate profile and operator fixture databases
+      - name: Create separate fixture databases
         run: |
           docker exec "${{ job.services.postgres.id }}" createdb --username=postgres dot_wtf_profile_service_test
           docker exec "${{ job.services.postgres.id }}" createdb --username=postgres dot_wtf_operator_service_test
+          docker exec "${{ job.services.postgres.id }}" createdb --username=postgres dot_wtf_split_migration_test
+      - name: Test split migration and deployed app compatibility
+        env:
+          SCHEMA_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dot_wtf_split_migration_test
+        run: pnpm --filter cwru-wtf test:member-schema
       - name: Test environment, sign-in, and legacy endpoint
         run: |
           pnpm --filter cwru-wtf test:env

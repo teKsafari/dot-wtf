@@ -1,7 +1,6 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
-import { memberProfiles } from './schema';
+import { findMemberAccessByTekidId } from './member-records';
 import { TekidProfileContractError } from './tekid/profile';
 import type { AuthContextType, AuthSession } from './tekid/types';
 import type { MemberRole, MemberStatus } from './member-types';
@@ -98,9 +97,7 @@ async function getAuthorization() {
     getAuthContext: getTekidAuthContext,
     async findMember(userId) {
       const { db } = await import('./db');
-      const [member] = await db.select({ status: memberProfiles.status, role: memberProfiles.role })
-        .from(memberProfiles).where(eq(memberProfiles.tekidUserId, userId)).limit(1);
-      return member ?? null;
+      return findMemberAccessByTekidId(db, userId);
     },
   });
 }

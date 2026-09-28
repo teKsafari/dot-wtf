@@ -19,7 +19,8 @@
     "test:tekid": "node --conditions=react-server --import tsx --test scripts/tekid.test.ts scripts/tekid-redirects.test.ts",
     "test:admin": "node --conditions=react-server --import tsx --test scripts/local-members.test.ts scripts/local-members.integration.test.ts",
     "test:profiles": "node --conditions=react-server --import tsx --test scripts/member-profile-fields.test.ts scripts/member-profiles.test.ts",
-    "test:operators": "node --conditions=react-server --import tsx --test scripts/member-operators.test.ts scripts/member-operators.integration.test.ts"
+    "test:operators": "node --conditions=react-server --import tsx --test scripts/member-operators.test.ts scripts/member-operators.integration.test.ts",
+    "test:member-schema": "node --import tsx --test scripts/member-schema-migration.integration.test.ts"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { eq } from 'drizzle-orm';
+import { eq, getTableColumns } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import * as schema from '../lib/schema';
 import { maximumMemberNumber } from '../lib/members';
+import { findMemberRecordByTekidId, selectMemberRecords, type MemberRecord } from '../lib/member-records';
 import { bootstrapLocalMember, importLegacyMembers } from './member-operator-database';
 import { importAuditAction, type LegacyMember } from './member-operator-logic';
 
@@ -27,9 +28,6 @@ const legacyMember = (id: string, changes: Partial<LegacyMember> = {}): LegacyMe
   id, name: `Logto ${id}`, primaryEmail: `${id}@example.org`, avatar: 'https://images.example.org/avatar.png',
   isSuspended: false, createdAt: 2000, organizationRoles: [], ...changes,
 });
-const profile = (id: string, changes: Partial<typeof schema.memberProfiles.$inferInsert> = {}): typeof schema.memberProfiles.$inferInsert => ({
-  tekidUserId: id, name: `Local ${id}`, email: `${id}@example.org`, emailVerified: true, ...changes,
-});
 
 describe('membership operator Postgres integration', { skip: !testUrl, concurrency: false }, () => {
   const client = postgres(testUrl!, { max: 3, onnotice: () => {} });
@@ -37,10 +35,25 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   const runImport = (members: LegacyMember[], apply = true) => importLegacyMembers(database, {
     members, apply, organizationId: 'test-organization', adminRoleId: 'admin-role', instanceLeadRoleId: 'lead-role',
   });
-  const read = async (id: string) => (await database.select().from(schema.memberProfiles).where(eq(schema.memberProfiles.tekidUserId, id)))[0];
+  const read = async (id: string) => (await findMemberRecordByTekidId(database, id)) ?? undefined;
+  async function seed(id: string, changes: Partial<MemberRecord> = {}) {
+    const values = { name: `Local ${id}`, email: `${id}@example.org`, emailVerified: true, ...changes };
+    const [user] = await database.insert(schema.users).values({ tekidUserId: id, email: values.email, emailVerified: values.emailVerified }).returning();
+    const profileValues = Object.fromEntries(Object.keys(getTableColumns(schema.profiles)).filter((key) => key in values).map((key) => [key, values[key as keyof typeof values]]));
+    const membershipValues = Object.fromEntries(Object.keys(getTableColumns(schema.memberships)).filter((key) => key in values).map((key) => [key, values[key as keyof typeof values]]));
+    await database.insert(schema.profiles).values({ ...profileValues, userId: user!.id });
+    await database.insert(schema.memberships).values({ ...membershipValues, userId: user!.id });
+    return (await read(id))!;
+  }
+  const setNext = async (value: number) => { await client`select setval('member_number_seq', ${value}, false)`; };
+  const nextSequence = async () => {
+    const [row] = await client`select last_value::text, is_called from member_number_seq`;
+    return Number(row!.last_value) + (row!.is_called ? 1 : 0);
+  };
   const snapshot = async () => ({
-    profiles: await database.select().from(schema.memberProfiles).orderBy(schema.memberProfiles.tekidUserId),
-    counters: await database.select().from(schema.memberNumberCounter).orderBy(schema.memberNumberCounter.id),
+    profiles: await selectMemberRecords(database).orderBy(schema.users.tekidUserId),
+    users: await database.select().from(schema.users).orderBy(schema.users.tekidUserId),
+    nextNumber: await nextSequence(),
     audits: await database.select().from(schema.memberAuditLogs).orderBy(schema.memberAuditLogs.id),
   });
 
@@ -51,12 +64,13 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   });
   after(async () => { await client.end(); });
   beforeEach(async () => {
-    await client`TRUNCATE TABLE member_profiles, member_audit_logs, member_number_counter RESTART IDENTITY`;
+    await client`TRUNCATE TABLE users, profiles, memberships, member_audit_logs, member_number_counter RESTART IDENTITY CASCADE`;
+    await client`ALTER SEQUENCE member_number_seq RESTART WITH 1`;
   });
 
   test('dry-run import and bootstrap leave profiles, counters, and audit rows unchanged', async () => {
-    await database.insert(schema.memberProfiles).values(profile('existing', { bio: 'Keep these answers' }));
-    await database.insert(schema.memberNumberCounter).values({ id: 1, nextNumber: 10 });
+    await seed('existing', { bio: 'Keep these answers' });
+    await setNext(10);
     await database.insert(schema.memberAuditLogs).values({ actorId: 'existing', targetId: 'existing', action: 'profile.save' });
     const before = await snapshot();
     const planned = await runImport([legacyMember('new'), legacyMember('existing', { createdAt: 1000 })], false);
@@ -66,11 +80,11 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   });
 
   test('apply imports role/status/number order and preserves all existing form answers', async () => {
-    await database.insert(schema.memberProfiles).values(profile('existing', {
+    await seed('existing', {
       name: 'User chosen name', categories: ['Research'], institution: 'CWRU, Cleveland', otherCategory: '',
       whatsapp: '+15550001111', bio: 'Original bio', wtfIdea: 'Original idea', currentProject: 'Original project',
       youtubeLink: 'https://youtu.be/old', socialLinks: { github: 'https://github.com/original' },
-    }));
+    });
     const before = (await read('existing'))!;
     const result = await runImport([
       legacyMember('suspended', { createdAt: 3000, isSuspended: true, organizationRoles: [{ id: 'lead-role' }] }),
@@ -88,7 +102,7 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
     assert.equal((await read('admin'))!.emailVerified, false);
     assert.equal((await read('admin'))!.approvedAt!.getTime(), 1000);
     const state = await snapshot();
-    assert.equal(state.counters[0]!.nextNumber, 4);
+    assert.equal(state.nextNumber, 4);
     assert.equal(state.audits.length, 3);
     assert(state.audits.every(({ action }) => action === importAuditAction));
   });
@@ -96,8 +110,8 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   test('rerunning cannot restore a revoked role/status or recreate a deleted imported profile', async () => {
     const source = [legacyMember('revoked', { organizationRoles: [{ id: 'admin-role' }] }), legacyMember('deleted')];
     await runImport(source);
-    await database.update(schema.memberProfiles).set({ status: 'suspended', role: 'member' }).where(eq(schema.memberProfiles.tekidUserId, 'revoked'));
-    await database.delete(schema.memberProfiles).where(eq(schema.memberProfiles.tekidUserId, 'deleted'));
+    await database.update(schema.memberships).set({ status: 'suspended', role: 'member' }).where(eq(schema.memberships.userId, (await read('revoked'))!.userId));
+    await database.delete(schema.users).where(eq(schema.users.tekidUserId, 'deleted'));
     const before = await snapshot();
     const result = await runImport(source);
     assert(result.every(({ outcome }) => outcome === 'already-imported'));
@@ -107,16 +121,15 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   });
 
   test('current local decisions are skipped and durably marked without changing profile answers', async () => {
-    await database.insert(schema.memberProfiles).values([
-      profile('pending', { status: 'pending' }), profile('rejected', { status: 'rejected' }),
-      profile('approved', { status: 'approved', role: 'admin', memberNumber: 8, approvedAt: new Date(1000) }),
-    ]);
+    await seed('pending', { status: 'pending' });
+    await seed('rejected', { status: 'rejected' });
+    await seed('approved', { status: 'approved', role: 'admin', memberNumber: 8, approvedAt: new Date(1000) });
     await database.insert(schema.memberAuditLogs).values({ actorId: 'operator', targetId: 'deleted-local', action: 'member.bootstrap' });
     const before = (await snapshot()).profiles;
     const source = ['pending', 'rejected', 'approved', 'deleted-local'].map((id) => legacyMember(id));
     assert((await runImport(source)).every(({ outcome }) => outcome === 'local-decision'));
     assert.deepEqual((await snapshot()).profiles, before);
-    assert.equal((await snapshot()).counters.length, 0);
+    assert.equal((await snapshot()).nextNumber, 9);
     assert.equal((await snapshot()).audits.filter(({ action }) => action === importAuditAction).length, 4);
     const after = await snapshot();
     assert((await runImport(source)).every(({ outcome }) => outcome === 'already-imported'));
@@ -124,14 +137,29 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   });
 
   test('exhausted allocation rolls back earlier imported profiles, numbers, and audit rows', async () => {
-    await database.insert(schema.memberNumberCounter).values({ id: 1, nextNumber: maximumMemberNumber });
+    await setNext(maximumMemberNumber);
     const before = await snapshot();
     await assert.rejects(runImport([legacyMember('first'), legacyMember('second')]), /Not enough automatic member numbers/);
     assert.deepEqual(await snapshot(), before);
   });
 
+  test('import handles identities without profiles and preserves membership decisions independently', async () => {
+    const [empty] = await database.insert(schema.users).values({ tekidUserId: 'identity-only', email: 'identity-only@example.org', emailVerified: true }).returning();
+    const [revoked] = await database.insert(schema.users).values({ tekidUserId: 'no-profile-revoked' }).returning();
+    await database.insert(schema.memberships).values({ userId: revoked!.id, status: 'suspended' });
+    const result = await runImport([legacyMember('identity-only'), legacyMember('no-profile-revoked', { organizationRoles: [{ id: 'admin-role' }] })]);
+    assert.equal(result.find(({ userId }) => userId === 'identity-only')!.outcome, 'import');
+    assert.equal((await read('identity-only'))!.userId, empty!.id);
+    assert.equal((await read('identity-only'))!.emailVerified, true);
+    assert.equal(result.find(({ userId }) => userId === 'no-profile-revoked')!.outcome, 'local-decision');
+    const [membership] = await database.select().from(schema.memberships).where(eq(schema.memberships.userId, revoked!.id));
+    assert.equal(membership!.status, 'suspended');
+    assert.equal(membership!.role, 'member');
+    assert.equal(await read('no-profile-revoked'), undefined);
+  });
+
   test('bootstrap grants a verified local profile once and preserves its number on rerun', async () => {
-    await database.insert(schema.memberProfiles).values(profile('operator', { status: 'pending', email: 'Operator@Example.org' }));
+    await seed('operator', { status: 'pending', email: 'Operator@Example.org' });
     const granted = await bootstrapLocalMember(database, { email: 'operator@example.org', role: 'admin', dryRun: false });
     assert.equal(granted.number, 1);
     assert.equal((await read('operator'))!.status, 'approved');

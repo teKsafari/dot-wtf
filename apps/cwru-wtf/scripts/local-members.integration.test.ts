@@ -8,9 +8,11 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '../lib/schema';
 import { AuthorizationError } from '../lib/authorization';
+import { createMemberDirectory, loadDirectoryRecords } from '../lib/member-directory';
+import { findMemberAccessByTekidId, findMemberRecordByTekidId, selectMemberRecords } from '../lib/member-records';
 import {
   createDatabaseMemberStore, createMemberService, maximumMemberNumber, MemberError,
-  withMemberMutationLock,
+  withMemberMutationLock, peekNextMemberNumber, reserveMemberNumber, type MemberRecord,
 } from '../lib/members';
 
 // Explicit opt-in only: these tests reset a disposable database, never app DATABASE_URL.
@@ -37,23 +39,48 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   const service = (sub = 'admin') => createMemberService({ getAuthContext: async () => identity(sub), store, now: () => now });
   const isStatus = (status: number) => (error: unknown) =>
     (error instanceof MemberError || error instanceof AuthorizationError) && error.status === status;
-  const profile = (id: string, changes: Partial<typeof schema.memberProfiles.$inferInsert> = {}): typeof schema.memberProfiles.$inferInsert => ({
+  const profile = (id: string, changes: Partial<MemberRecord> = {}) => ({
     tekidUserId: id, name: `Name ${id}`, email: `${id}@example.org`, emailVerified: true,
-    categories: ['Software / Coding'], institution: 'CWRU, Cleveland', whatsapp: '+15555550123',
-    wtfIdea: 'Build something surprising', currentProject: 'A useful project',
+    picture: null, categories: ['Software / Coding'], institution: 'CWRU, Cleveland', otherCategory: '', whatsapp: '+15555550123',
+    bio: '', wtfIdea: 'Build something surprising', currentProject: 'A useful project',
     youtubeLink: 'https://youtube.com/watch?v=test', socialLinks: { portfolio: 'https://example.org' },
-    status: 'pending', submittedAt: now, ...changes,
+    role: 'member' as const, status: 'pending' as const, memberNumber: null, submittedAt: now,
+    approvedAt: null, reviewedAt: null, reviewedBy: null, ...changes,
   });
-  const read = async (id: string) => (await db.select().from(schema.memberProfiles).where(eq(schema.memberProfiles.tekidUserId, id)))[0]!;
+  async function insertProfiles(input: ReturnType<typeof profile> | ReturnType<typeof profile>[]) {
+    await db.transaction(async (transaction) => {
+      for (const member of Array.isArray(input) ? input : [input]) {
+        const [user] = await transaction.insert(schema.users).values({
+          tekidUserId: member.tekidUserId, email: member.email, emailVerified: member.emailVerified,
+        }).returning();
+        await transaction.insert(schema.profiles).values({
+          userId: user!.id, name: member.name, picture: member.picture,
+          categories: member.categories, institution: member.institution, otherCategory: member.otherCategory,
+          whatsapp: member.whatsapp, bio: member.bio, wtfIdea: member.wtfIdea,
+          currentProject: member.currentProject, youtubeLink: member.youtubeLink, socialLinks: member.socialLinks,
+        });
+        await transaction.insert(schema.memberships).values({
+          userId: user!.id, role: member.role, status: member.status, memberNumber: member.memberNumber,
+          submittedAt: member.submittedAt, approvedAt: member.approvedAt, reviewedAt: member.reviewedAt, reviewedBy: member.reviewedBy,
+        });
+      }
+    });
+  }
+  const read = async (id: string) => {
+    const row = await findMemberRecordByTekidId(db, id);
+    assert.ok(row);
+    return row;
+  };
+  const nextNumber = () => withMemberMutationLock(db, peekNextMemberNumber);
 
   before(async () => {
     await migrate(db, { migrationsFolder: resolve(process.cwd(), 'drizzle') });
   });
   after(async () => { await client.end(); });
   beforeEach(async () => {
-    await db.execute(sql`truncate table member_audit_logs, member_profiles, member_number_counter restart identity`);
-    await db.insert(schema.memberNumberCounter).values({ id: 1, nextNumber: 1 });
-    await db.insert(schema.memberProfiles).values([
+    await db.execute(sql`truncate table member_audit_logs, memberships, profiles, users, member_number_counter restart identity cascade`);
+    await db.execute(sql`select setval('member_number_seq', 1, false)`);
+    await insertProfiles([
       profile('admin', { role: 'admin', status: 'approved', memberNumber: 1, approvedAt: now }),
       profile('lead', { role: 'instance-lead', status: 'approved', memberNumber: 2, approvedAt: now }),
     ]);
@@ -61,29 +88,29 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
 
   test('concurrent approvals allocate unique sequential numbers and commit audits together', async () => {
     const ids = Array.from({ length: 10 }, (_, index) => `applicant-${index}`);
-    await db.insert(schema.memberProfiles).values(ids.map((id) => profile(id)));
+    await insertProfiles(ids.map((id) => profile(id)));
     const members = await Promise.all(ids.map((id) => service('lead').reviewMember(id, { action: 'approve' })));
     assert.deepEqual(members.map((member) => member.memberNumber).sort((a, b) => a! - b!), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     assert.ok(members.every((member) => member.status === 'approved' && member.role === 'member'));
     assert.equal((await db.select().from(schema.memberAuditLogs)).length, 10);
-    assert.equal((await db.select().from(schema.memberNumberCounter))[0]!.nextNumber, 13);
+    assert.equal(await nextNumber(), 13);
   });
 
-  test('custom number conflicts return 409 and rollback status, counter, and audit', async () => {
-    await db.insert(schema.memberProfiles).values([profile('one'), profile('two')]);
+  test('custom number conflicts return 409 without allocating another sequence number', async () => {
+    await insertProfiles([profile('one'), profile('two')]);
     const results = await Promise.allSettled(['one', 'two'].map((id) => service().reviewMember(id, { action: 'approve', memberNumber: 50 })));
     assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
     const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
     assert.ok(isStatus(409)(rejected.reason));
-    assert.equal((await db.select().from(schema.memberProfiles).where(eq(schema.memberProfiles.status, 'pending'))).length, 1);
+    assert.equal((await selectMemberRecords(db).where(eq(schema.memberships.status, 'pending'))).length, 1);
     assert.equal((await db.select().from(schema.memberAuditLogs)).length, 1);
-    assert.equal((await db.select().from(schema.memberNumberCounter))[0]!.nextNumber, 51);
+    assert.equal(await nextNumber(), 51);
     const loser = (await read('one')).status === 'pending' ? 'one' : 'two';
     assert.equal((await service().reviewMember(loser, { action: 'approve' })).memberNumber, 51);
   });
 
-  test('manual renumbering advances the counter and never reuses previously assigned numbers', async () => {
-    await db.insert(schema.memberProfiles).values([profile('one'), profile('two'), profile('three')]);
+  test('manual renumbering advances the sequence and automatic numbers never move backward', async () => {
+    await insertProfiles([profile('one'), profile('two'), profile('three')]);
     assert.equal((await service().reviewMember('one', { action: 'approve', memberNumber: 100 })).memberNumber, 100);
     assert.equal((await service().reviewMember('two', { action: 'approve' })).memberNumber, 101);
     await service().reviewMember('one', { action: 'set-number', memberNumber: 5 });
@@ -93,7 +120,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   });
 
   test('approval enforces submitted, complete, verified applications; restoration preserves history', async () => {
-    await db.insert(schema.memberProfiles).values([
+    await insertProfiles([
       profile('draft', { status: 'draft' }), profile('incomplete', { wtfIdea: '' }),
       profile('unverified', { emailVerified: false }), profile('unsubmitted', { submittedAt: null }),
       profile('never-approved', { status: 'suspended', wtfIdea: '', submittedAt: null }),
@@ -111,7 +138,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   });
 
   test('instance leads cannot renumber, assign roles, or review staff', async () => {
-    await db.insert(schema.memberProfiles).values([profile('applicant'), profile('staff', { role: 'instance-lead' })]);
+    await insertProfiles([profile('applicant'), profile('staff', { role: 'instance-lead' })]);
     for (const [id, action] of [
       ['applicant', { action: 'approve', memberNumber: 12 }],
       ['admin', { action: 'suspend' }],
@@ -125,13 +152,14 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   });
 
   test('a queued mutation rechecks the actor after revocation under the shared lock', async () => {
-    await db.insert(schema.memberProfiles).values(profile('applicant'));
+    await insertProfiles(profile('applicant'));
     let pending: Promise<unknown> | undefined;
     await withMemberMutationLock(db, async (transaction) => {
       pending = service('lead').reviewMember('applicant', { action: 'approve' });
       // Attach a handler immediately so rejection is observed even on very fast hosts.
       void pending.catch(() => {});
-      await transaction.update(schema.memberProfiles).set({ role: 'member' }).where(eq(schema.memberProfiles.tekidUserId, 'lead'));
+      const lead = await findMemberRecordByTekidId(transaction, 'lead');
+      await transaction.update(schema.memberships).set({ role: 'member' }).where(eq(schema.memberships.id, lead!.membershipId));
     });
     await assert.rejects(pending!, isStatus(403));
     assert.equal((await read('applicant')).status, 'pending');
@@ -139,7 +167,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   });
 
   test('admins can revoke suspended staff roles without restoring access', async () => {
-    await db.insert(schema.memberProfiles).values(profile('suspended-staff', {
+    await insertProfiles(profile('suspended-staff', {
       status: 'suspended', role: 'admin', memberNumber: 3, approvedAt: now,
     }));
     await assert.rejects(service('lead').reviewMember('suspended-staff', { action: 'set-role', role: 'member' }), isStatus(403));
@@ -154,7 +182,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   test('self-demotion and suspension fail; two admins cannot concurrently revoke each other', async () => {
     await assert.rejects(service().reviewMember('admin', { action: 'set-role', role: 'member' }), isStatus(409));
     await assert.rejects(service().reviewMember('admin', { action: 'suspend' }), isStatus(409));
-    await db.insert(schema.memberProfiles).values(profile('admin-two', { status: 'approved', role: 'admin', memberNumber: 3, approvedAt: now }));
+    await insertProfiles(profile('admin-two', { status: 'approved', role: 'admin', memberNumber: 3, approvedAt: now }));
     const results = await Promise.allSettled([
       service().reviewMember('admin-two', { action: 'set-role', role: 'member' }),
       service('admin-two').reviewMember('admin', { action: 'set-role', role: 'member' }),
@@ -162,12 +190,12 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
     const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
     assert.ok(isStatus(403)(rejected.reason));
-    const admins = (await db.select().from(schema.memberProfiles)).filter((member) => member.status === 'approved' && member.role === 'admin');
+    const admins = (await selectMemberRecords(db)).filter((member) => member.status === 'approved' && member.role === 'admin');
     assert.equal(admins.length, 1);
   });
 
   test('status filters paginate, protect application details, and reject forged actions', async () => {
-    await db.insert(schema.memberProfiles).values(Array.from({ length: 23 }, (_, index) => profile(`pending-${index}`)));
+    await insertProfiles(Array.from({ length: 23 }, (_, index) => profile(`pending-${index}`)));
     const first = await service().listMembers(1, 'pending');
     const second = await service().listMembers(2, 'pending');
     assert.equal(first.members.length, 20);
@@ -184,11 +212,101 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     ]) await assert.rejects(service().reviewMember('pending-0', mutation), isStatus(400));
   });
 
-  test('exhausted integer counter does not overflow or partially approve a member', async () => {
-    await db.insert(schema.memberProfiles).values([profile('last'), profile('next')]);
+  test('draft and pending identities use local UUID relations without consuming member numbers', async () => {
+    const before = await nextNumber();
+    await insertProfiles([profile('unapproved-draft', { status: 'draft' }), profile('unapproved-pending')]);
+    const draft = await read('unapproved-draft');
+    assert.match(draft.userId, /^[0-9a-f-]{36}$/);
+    assert.match(draft.membershipId, /^[0-9a-f-]{36}$/);
+    assert.notEqual(draft.userId, draft.tekidUserId);
+    assert.notEqual(draft.userId, draft.membershipId);
+    assert.equal(draft.memberNumber, null);
+    assert.equal((await read('unapproved-pending')).memberNumber, null);
+    assert.equal(await nextNumber(), before);
+    const listed = await service().listMembers(1, 'draft');
+    assert.equal(listed.members[0]!.id, 'unapproved-draft');
+    assert.equal('userId' in listed.members[0]!, false);
+    assert.equal('membershipId' in listed.members[0]!, false);
+  });
+
+  test('authorization uses the user membership even when its profile is not yet present', async () => {
+    const admin = await read('admin');
+    await db.delete(schema.profiles).where(eq(schema.profiles.userId, admin.userId));
+    assert.equal(await findMemberRecordByTekidId(db, 'admin'), null);
+    assert.deepEqual(await findMemberAccessByTekidId(db, 'admin'), { role: 'admin', status: 'approved' });
+    await insertProfiles(profile('new-applicant'));
+    assert.equal((await service().reviewMember('new-applicant', { action: 'approve' })).status, 'approved');
+  });
+
+  test('an approved viewer without a profile can read the directory but is not listed', async () => {
+    const admin = await read('admin');
+    await db.delete(schema.profiles).where(eq(schema.profiles.userId, admin.userId));
+    const directory = createMemberDirectory({
+      getAuthContext: async () => identity('admin'),
+      loadMembers: async () => loadDirectoryRecords(db),
+    });
+    const result = await directory();
+    assert.equal(result.status, 'member');
+    if (result.status !== 'member') return;
+    assert.equal(result.viewerId, 'admin');
+    assert.deepEqual(result.members.map((member) => member.id), ['lead']);
+    assert.equal('userId' in result.members[0]!, false);
+    await db.update(schema.memberships).set({ status: 'suspended' }).where(eq(schema.memberships.id, admin.membershipId));
+    assert.deepEqual(await directory(), { status: 'not-member' });
+  });
+
+  test('staff without profiles remain visible and revocable without inventing profile rows', async () => {
+    await insertProfiles(profile('missing-profile-admin', { role: 'admin', status: 'approved', memberNumber: 3, approvedAt: now }));
+    const missing = await read('missing-profile-admin');
+    await db.delete(schema.profiles).where(eq(schema.profiles.userId, missing.userId));
+    const listed = (await service().listMembers()).members.find((member) => member.id === 'missing-profile-admin');
+    assert.ok(listed);
+    assert.equal(listed.name, null);
+    assert.equal(listed.role, 'admin');
+    assert.equal(listed.fields.name, '');
+    assert.deepEqual(listed.fields.categories, []);
+    await assert.rejects(service('lead').reviewMember('missing-profile-admin', { action: 'suspend' }), isStatus(403));
+    assert.equal((await service().reviewMember('missing-profile-admin', { action: 'suspend' })).status, 'suspended');
+    assert.equal((await service().reviewMember('missing-profile-admin', { action: 'set-role', role: 'member' })).role, 'member');
+    await assert.rejects(service('missing-profile-admin').listMembers(), isStatus(403));
+    assert.equal(await findMemberRecordByTekidId(db, 'missing-profile-admin'), null);
+    assert.deepEqual(await db.select().from(schema.profiles).where(eq(schema.profiles.userId, missing.userId)), []);
+  });
+
+  test('failed automatic and custom reservations leave sequence gaps without membership or audit changes', async () => {
+    const beforeProfiles = await selectMemberRecords(db);
+    const first = await nextNumber();
+    await assert.rejects(withMemberMutationLock(db, async (transaction) => {
+      assert.equal(await reserveMemberNumber(transaction), first);
+      throw new Error('Injected failure after nextval');
+    }), /Injected failure/);
+    assert.equal(await nextNumber(), first + 1);
+    await assert.rejects(withMemberMutationLock(db, async (transaction) => {
+      assert.equal(await reserveMemberNumber(transaction, 50), 50);
+      throw new Error('Injected failure after setval');
+    }), /Injected failure/);
+    assert.equal(await nextNumber(), 51);
+    assert.deepEqual(await selectMemberRecords(db), beforeProfiles);
+    assert.equal((await db.select().from(schema.memberAuditLogs)).length, 0);
+    await insertProfiles(profile('after-gap'));
+    assert.equal((await service().reviewMember('after-gap', { action: 'approve' })).memberNumber, 51);
+  });
+
+  test('renumbering to the current number is idempotent and low custom numbers never reduce high water', async () => {
+    await insertProfiles([profile('high'), profile('low'), profile('later')]);
+    assert.equal((await service().reviewMember('high', { action: 'approve', memberNumber: 100 })).memberNumber, 100);
+    assert.equal((await service().reviewMember('high', { action: 'set-number', memberNumber: 100 })).memberNumber, 100);
+    assert.equal(await nextNumber(), 101);
+    assert.equal((await service().reviewMember('low', { action: 'approve', memberNumber: 5 })).memberNumber, 5);
+    assert.equal(await nextNumber(), 101);
+    assert.equal((await service().reviewMember('later', { action: 'approve' })).memberNumber, 101);
+  });
+
+  test('exhausted sequence does not overflow or partially approve a member', async () => {
+    await insertProfiles([profile('last'), profile('next')]);
     await service().reviewMember('last', { action: 'approve', memberNumber: maximumMemberNumber });
     await assert.rejects(service().reviewMember('next', { action: 'approve' }), isStatus(409));
     assert.equal((await read('next')).status, 'pending');
-    assert.equal((await db.select().from(schema.memberNumberCounter))[0]!.nextNumber, 2_147_483_647);
+    assert.equal(await nextNumber(), 2_147_483_647);
   });
 });

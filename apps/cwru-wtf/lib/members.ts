@@ -4,11 +4,12 @@ import { and, asc, count, desc, eq, max, ne, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { z } from 'zod';
 import * as schema from './schema';
-import { memberAuditLogs, memberNumberCounter, memberProfiles } from './schema';
+import { memberAuditLogs, memberships, users } from './schema';
+import { findMemberAccessByTekidId, findManagementMemberRecordByTekidId, selectManagementMemberRecords, type MemberRecord } from './member-records';
 import { applicationFieldsSchema, safeSocialLinks } from './member-profile-fields';
 import {
   assertDashboardPermission, AuthorizationError, dashboardContextForMember,
-  type DashboardPermission,
+  type DashboardPermission, type LocalMemberAccess,
 } from './authorization';
 import {
   memberStatuses, safeMemberPicture,
@@ -38,7 +39,7 @@ export class MemberError extends Error {
   }
 }
 
-export type MemberRecord = typeof memberProfiles.$inferSelect;
+export type { MemberRecord } from './member-records';
 type MemberChanges = Partial<Pick<MemberRecord,
   'status' | 'role' | 'memberNumber' | 'approvedAt' | 'reviewedAt' | 'reviewedBy' | 'updatedAt'
 >>;
@@ -51,6 +52,7 @@ export type MemberAudit = {
 
 export interface MemberTransaction {
   findMember(userId: string): Promise<MemberRecord | null>;
+  findMemberAccess(userId: string): Promise<LocalMemberAccess | null>;
   listMembers(page: number, status: MemberStatusFilter): Promise<MemberRecord[]>;
   countOtherActiveAdmins(userId: string): Promise<number>;
   reserveMemberNumber(requested?: number): Promise<number>;
@@ -126,7 +128,7 @@ export function createMemberService(dependencies: {
     const page = parseInput(z.coerce.number().int().min(1).max(100_000), pageInput);
     const status = parseInput(z.enum(['all', ...memberStatuses]), statusInput);
     return dependencies.store.transaction(async (transaction) => {
-      const actor = dashboardContextForMember(auth, await transaction.findMember(auth.claims.sub));
+      const actor = dashboardContextForMember(auth, await transaction.findMemberAccess(auth.claims.sub));
       assertDashboardPermission(actor, 'members:read');
       const rows = await transaction.listMembers(page, status);
       return { members: rows.slice(0, pageSize).map(toDashboardMember), page, status, hasMore: rows.length > pageSize };
@@ -141,7 +143,7 @@ export function createMemberService(dependencies: {
       return await dependencies.store.transaction(async (transaction) => {
         // All membership writes share this lock. Re-read the actor after acquiring it:
         // a queued request cannot retain privileges revoked by the preceding mutation.
-        const actor = dashboardContextForMember(auth, await transaction.findMember(auth.claims.sub));
+        const actor = dashboardContextForMember(auth, await transaction.findMemberAccess(auth.claims.sub));
         const permission: DashboardPermission = mutation.action === 'set-role' ? 'members:assign-roles'
           : mutation.action === 'set-number' || (mutation.action === 'approve' && mutation.memberNumber !== undefined)
             ? 'members:renumber' : 'members:review';
@@ -162,7 +164,7 @@ export function createMemberService(dependencies: {
             if (!returningMember && (!member.submittedAt || !applicationFieldsSchema.safeParse(applicationFields(member)).success)) {
               throw new MemberError(409, 'This application is incomplete. Ask the applicant to complete it and submit again.');
             }
-            changes.memberNumber = mutation.memberNumber !== undefined
+            changes.memberNumber = mutation.memberNumber !== undefined && mutation.memberNumber !== member.memberNumber
               ? await transaction.reserveMemberNumber(mutation.memberNumber)
               : member.memberNumber ?? await transaction.reserveMemberNumber();
             changes.status = 'approved';
@@ -182,7 +184,8 @@ export function createMemberService(dependencies: {
           }
           case 'set-number': {
             if (member.memberNumber === null) throw new MemberError(409, 'Approve this application before assigning a member number.');
-            changes.memberNumber = await transaction.reserveMemberNumber(mutation.memberNumber);
+            changes.memberNumber = mutation.memberNumber === member.memberNumber
+              ? member.memberNumber : await transaction.reserveMemberNumber(mutation.memberNumber);
             break;
           }
           case 'set-role': {
@@ -234,20 +237,50 @@ export function withMemberMutationLock<T>(database: MembershipDatabase, operatio
   });
 }
 
-// Call only inside withMemberMutationLock. Counter reservation and the member write
-// must commit (or roll back) together, including bootstrap and migration commands.
+// Call these helpers under withMemberMutationLock. PostgreSQL sequences do not
+// roll back with a failed membership transaction: gaps are expected and automatic allocation never rewinds.
+async function memberNumberState(transaction: MembershipTransactionDatabase) {
+  const [sequence] = await transaction.execute<{ lastValue: string; isCalled: boolean }>(
+    sql`select last_value::text as "lastValue", is_called as "isCalled" from member_number_seq`
+  );
+  const [maximum] = await transaction.select({ value: max(memberships.memberNumber) }).from(memberships);
+  const sequenceNext = Number(sequence!.lastValue) + (sequence!.isCalled ? 1 : 0);
+  return { sequenceNext, nextNumber: Math.max(sequenceNext, (maximum?.value ?? 0) + 1) };
+}
+
+// Read-only prediction for operator dry runs; does not call nextval or setval.
+export async function peekNextMemberNumber(transaction: MembershipTransactionDatabase): Promise<number> {
+  return (await memberNumberState(transaction)).nextNumber;
+}
+
 export async function reserveMemberNumber(transaction: MembershipTransactionDatabase, requested?: number): Promise<number> {
   if (requested !== undefined && !memberNumberSchema.safeParse(requested).success) {
     throw new MemberError(400, `Choose a whole member number between 1 and ${maximumMemberNumber}.`);
   }
-  await transaction.insert(memberNumberCounter).values({ id: 1, nextNumber: 1 }).onConflictDoNothing();
-  const [counter] = await transaction.select().from(memberNumberCounter).where(eq(memberNumberCounter.id, 1)).for('update');
-  const [maximum] = await transaction.select({ value: max(memberProfiles.memberNumber) }).from(memberProfiles);
-  const nextNumber = Math.max(counter!.nextNumber, (maximum?.value ?? 0) + 1);
-  const number = requested ?? nextNumber;
-  if (number > maximumMemberNumber) throw new MemberError(409, 'Automatic member numbers are exhausted. An administrator must choose an available number.');
-  await transaction.update(memberNumberCounter).set({ nextNumber: Math.max(nextNumber, number + 1) })
-    .where(eq(memberNumberCounter.id, 1));
+  if (requested !== undefined) {
+    const [collision] = await transaction.select({ id: memberships.id }).from(memberships)
+      .where(eq(memberships.memberNumber, requested)).limit(1);
+    if (collision) throw new MemberError(409, 'That member number is already assigned. Choose another number.');
+  }
+  const { sequenceNext, nextNumber } = await memberNumberState(transaction);
+  if (requested !== undefined) {
+    const followingNumber = Math.max(nextNumber, requested + 1);
+    if (sequenceNext < followingNumber) {
+      await transaction.execute(sql`select setval('member_number_seq', ${followingNumber}, false)`);
+    }
+    return requested;
+  }
+  if (nextNumber > maximumMemberNumber) {
+    throw new MemberError(409, 'Automatic member numbers are exhausted. An administrator must choose an available number.');
+  }
+  // A legacy bridge or operator may have inserted a number above the sequence.
+  // Only advance the sequence; even rolled-back reservations retain their high water mark.
+  if (sequenceNext < nextNumber) {
+    await transaction.execute(sql`select setval('member_number_seq', ${nextNumber}, false)`);
+  }
+  const [allocated] = await transaction.execute<{ number: string }>(sql`select nextval('member_number_seq')::text as number`);
+  const number = Number(allocated!.number);
+  if (number > maximumMemberNumber) throw new MemberError(409, 'Automatic member numbers are exhausted.');
   return number;
 }
 
@@ -255,30 +288,32 @@ export function createDatabaseMemberStore(database: MembershipDatabase): MemberS
   return {
     transaction(operation) {
       return withMemberMutationLock(database, (transaction) => operation({
+        async findMemberAccess(userId) {
+          return findMemberAccessByTekidId(transaction, userId);
+        },
         async findMember(userId) {
-          const [member] = await transaction.select().from(memberProfiles)
-            .where(eq(memberProfiles.tekidUserId, userId)).limit(1);
-          return member ?? null;
+          return findManagementMemberRecordByTekidId(transaction, userId);
         },
         async listMembers(page, status) {
-          return transaction.select().from(memberProfiles)
-            .where(status === 'all' ? undefined : eq(memberProfiles.status, status))
-            .orderBy(desc(memberProfiles.submittedAt), desc(memberProfiles.createdAt), asc(memberProfiles.tekidUserId))
+          return selectManagementMemberRecords(transaction)
+            .where(status === 'all' ? undefined : eq(memberships.status, status))
+            .orderBy(desc(memberships.submittedAt), desc(memberships.createdAt), asc(users.tekidUserId))
             .limit(pageSize + 1).offset((page - 1) * pageSize);
         },
         async countOtherActiveAdmins(userId) {
-          const [result] = await transaction.select({ value: count() }).from(memberProfiles)
-            .where(and(eq(memberProfiles.status, 'approved'), eq(memberProfiles.role, 'admin'), ne(memberProfiles.tekidUserId, userId)));
+          const [result] = await transaction.select({ value: count() }).from(memberships)
+            .innerJoin(users, eq(users.id, memberships.userId))
+            .where(and(eq(memberships.status, 'approved'), eq(memberships.role, 'admin'), ne(users.tekidUserId, userId)));
           return result?.value ?? 0;
         },
         async reserveMemberNumber(requested) {
           return reserveMemberNumber(transaction, requested);
         },
         async updateMember(userId, changes) {
-          const [member] = await transaction.update(memberProfiles).set(changes)
-            .where(eq(memberProfiles.tekidUserId, userId)).returning();
+          const member = await findManagementMemberRecordByTekidId(transaction, userId);
           if (!member) throw new MemberError(404, 'This member profile no longer exists.');
-          return member;
+          await transaction.update(memberships).set(changes).where(eq(memberships.id, member.membershipId));
+          return (await findManagementMemberRecordByTekidId(transaction, userId))!;
         },
         async audit(event) {
           await transaction.insert(memberAuditLogs).values(event);
