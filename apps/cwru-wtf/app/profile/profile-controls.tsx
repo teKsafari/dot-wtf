@@ -1,14 +1,17 @@
 "use client"
 
-import { useActionState, useId, type ReactNode } from "react"
+import { useActionState, useEffect, useId, useRef, type ReactNode } from "react"
 import { useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
 import * as Avatar from "@radix-ui/react-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  profileFieldsFromFormData,
   profileLimits,
+  socialLinkLabels,
   type ProfileField,
   type ProfileFields,
   type ProfileFormState,
@@ -58,63 +61,145 @@ export function ProfileAvatar({ name, picture, size = "lg" }: {
   )
 }
 
-const fields: {
+interface FieldConfig {
   name: ProfileField
   label: string
-  hint: string
-  multiline: boolean
+  hint?: string
   maxLength: number
-}[] = [
-  { name: "bio", label: "Bio", hint: "Members see this with your name and photo.", multiline: true, maxLength: profileLimits.bio },
-  { name: "wtfIdea", label: "Your WTF idea", hint: "What do you want to build that would make people go WTF?", multiline: true, maxLength: profileLimits.text },
-  { name: "currentProject", label: "Current project", hint: "What have you built, or what are you building now?", multiline: true, maxLength: profileLimits.text },
-  { name: "youtubeLink", label: "Video", hint: "A YouTube link to something that interests you.", multiline: false, maxLength: profileLimits.link },
+  rows?: number
+  placeholder?: string
+  type?: "text" | "url"
+}
+
+const bioField: FieldConfig = {
+  name: "bio", label: "Bio", hint: "Members see this with your name and photo.", maxLength: profileLimits.bio, rows: 3,
+}
+
+const linkFields: FieldConfig[] = [
+  { name: "github", label: socialLinkLabels.github, placeholder: "username", maxLength: profileLimits.social },
+  { name: "instagram", label: socialLinkLabels.instagram, placeholder: "@username", maxLength: profileLimits.social },
+  { name: "linkedin", label: socialLinkLabels.linkedin, placeholder: "linkedin.com/in/you", maxLength: profileLimits.social },
+  { name: "portfolio", label: socialLinkLabels.portfolio, placeholder: "yoursite.com", maxLength: profileLimits.link },
 ]
 
+const privateFields: FieldConfig[] = [
+  { name: "wtfIdea", label: "Your WTF idea", hint: "What do you want to build that would make people go WTF?", maxLength: profileLimits.text, rows: 4 },
+  { name: "currentProject", label: "Current project", hint: "What have you built, or what are you building now?", maxLength: profileLimits.text, rows: 4 },
+  { name: "youtubeLink", label: "Video", hint: "A YouTube link to something that interests you.", maxLength: profileLimits.link, type: "url", placeholder: "https://youtube.com/watch?v=…" },
+]
+
+function ProfileInput({ field, state, idPrefix }: {
+  field: FieldConfig
+  state: ProfileFormState
+  idPrefix: string
+}) {
+  const error = state.errors?.[field.name]
+  const inputId = `${idPrefix}-${field.name}`
+  const hintId = field.hint ? `${inputId}-hint` : null
+  const errorId = `${inputId}-error`
+  const common = {
+    id: inputId,
+    name: field.name,
+    // React resets the form after each submission; the state keeps what was entered.
+    defaultValue: state.fields[field.name],
+    maxLength: field.maxLength,
+    invalid: Boolean(error),
+    "aria-describedby": [hintId, error ? errorId : null].filter(Boolean).join(" ") || undefined,
+  }
+
+  return (
+    <div>
+      <Label htmlFor={inputId}>{field.label}</Label>
+      {hintId ? <p id={hintId} className="mt-1.5 text-sm text-muted-foreground">{field.hint}</p> : null}
+      {field.rows ? (
+        <Textarea {...common} rows={field.rows} className="mt-3" />
+      ) : (
+        <Input
+          {...common}
+          type={field.type ?? "text"}
+          inputMode="url"
+          autoCapitalize="none"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={field.placeholder}
+          className="mt-3"
+        />
+      )}
+      {error ? <p id={errorId} className="mt-2 text-sm text-destructive">{error}</p> : null}
+    </div>
+  )
+}
+
+// A dropped connection or a deploy mid-save rejects the action; keep the text instead of crashing.
+async function saveProfileOrKeepInput(previous: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
+  try {
+    return await saveProfile(previous, formData)
+  } catch {
+    return {
+      status: "error",
+      fields: profileFieldsFromFormData(formData),
+      message: "We couldn’t reach cwru.wtf. Check your connection, then save again.",
+    }
+  }
+}
+
 export function ProfileForm({ initialFields }: { initialFields: ProfileFields }) {
-  const [state, formAction, pending] = useActionState(saveProfile, {
+  const [state, formAction, pending] = useActionState(saveProfileOrKeepInput, {
     status: "idle",
     fields: initialFields,
   } satisfies ProfileFormState)
   const id = useId()
+  const router = useRouter()
+  const focusedOnSubmit = useRef<HTMLElement | null>(null)
+
+  // Refresh after the save settles, not inside the action, so the form unlocks right away.
+  // A refresh also clears cached pages, so Back cannot restore (and re-save) the old profile.
+  useEffect(() => {
+    if (state.status === "saved") router.refresh()
+  }, [state, router])
+
+  // Locking the fields drops focus to <body>; return it once they unlock.
+  useEffect(() => {
+    if (pending) return
+    const element = focusedOnSubmit.current
+    focusedOnSubmit.current = null
+    if (element?.isConnected && (document.activeElement === document.body || !document.activeElement)) {
+      element.focus()
+    }
+  }, [pending])
 
   return (
-    <form action={formAction} className="flex flex-col gap-6 text-left" noValidate>
-      {fields.map((field, index) => {
-        const error = state.errors?.[field.name]
-        const inputId = `${id}-${field.name}`
-        const hintId = `${inputId}-hint`
-        const errorId = `${inputId}-error`
-        const common = {
-          id: inputId,
-          name: field.name,
-          // React resets the form after each submission; the state keeps what was entered.
-          defaultValue: state.fields[field.name],
-          maxLength: field.maxLength,
-          invalid: Boolean(error),
-          "aria-describedby": error ? `${hintId} ${errorId}` : hintId,
-        }
+    <form
+      action={formAction}
+      onSubmit={() => {
+        focusedOnSubmit.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      }}
+      className="flex flex-col gap-6 text-left"
+      noValidate
+    >
+      {/* React resets the form when the save settles, so nothing can be typed until then. */}
+      <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
+        <ProfileInput field={bioField} state={state} idPrefix={id} />
 
-        return (
-          <div key={field.name} className={cn(index === 1 && "border-t border-border pt-6")}>
-            {index === 1 ? (
-              <p className="mb-6 text-sm text-muted-foreground">
-                Only you can see the rest of your profile.
-              </p>
-            ) : null}
-            <Label htmlFor={inputId}>{field.label}</Label>
-            <p id={hintId} className="mt-1.5 text-sm text-muted-foreground">{field.hint}</p>
-            {field.multiline ? (
-              <Textarea {...common} rows={field.name === "bio" ? 3 : 4} className="mt-3" />
-            ) : (
-              <Input {...common} type="url" inputMode="url" placeholder="https://youtube.com/watch?v=…" className="mt-3" />
-            )}
-            {error ? (
-              <p id={errorId} className="mt-2 text-sm text-destructive">{error}</p>
-            ) : null}
+        <fieldset className="min-w-0" aria-describedby={`${id}-links-hint`}>
+          <legend className="block font-mono text-xs uppercase tracking-widest text-muted-foreground">Links</legend>
+          <p id={`${id}-links-hint`} className="mt-1.5 text-sm text-muted-foreground">
+            Members see these next to your bio. A username or a full link both work.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {linkFields.map((field) => (
+              <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />
+            ))}
           </div>
-        )
-      })}
+        </fieldset>
+
+        <div className="flex flex-col gap-6 border-t border-border pt-6">
+          <p className="text-sm text-muted-foreground">Only you can see the rest of your profile.</p>
+          {privateFields.map((field) => (
+            <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />
+          ))}
+        </div>
+      </fieldset>
 
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" size="lg" disabled={pending} aria-busy={pending}>

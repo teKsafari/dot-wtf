@@ -1,3 +1,5 @@
+import type { SocialLinks } from '../member-profile-fields';
+
 export type MemberRole = 'member' | 'admin' | 'instance-lead';
 
 export interface DashboardMember {
@@ -20,4 +22,5 @@ export interface DirectoryMember {
   name: string | null;
   picture: string | null;
   bio: string;
+  links: SocialLinks;
 }
