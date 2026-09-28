@@ -22,7 +22,8 @@ const text = (max: number) => z.preprocess(
 
 // Accepts "example.com/path" as well as full links; only plain web links come back.
 function webLink(value: string): URL | null {
-  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+  // A dot means a host ("ada.dev:8080"), not a scheme, even though schemes may contain dots.
+  const candidate = /^[a-z][a-z0-9+-]*:/i.test(value) ? value : `https://${value}`;
   try {
     const url = new URL(candidate);
     const plain = ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
@@ -40,7 +41,8 @@ const profileSites = {
   },
   instagram: {
     host: 'instagram.com',
-    handle: /^[A-Za-z0-9._]{1,30}$/,
+    // Instagram usernames never start or end with a period or contain two in a row.
+    handle: /^(?!\.)(?!.*\.\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/,
     link: (handle: string) => `https://www.instagram.com/${handle}/`,
   },
   linkedin: {
@@ -50,6 +52,13 @@ const profileSites = {
   },
 };
 
+// Normalizing can lengthen a link, so the stored href itself must fit the limit.
+function withinLimit(href: string, max: number, context: z.RefinementCtx) {
+  if (href.length <= max) return href;
+  context.addIssue({ code: z.ZodIssueCode.custom, message: 'This link is too long.' });
+  return z.NEVER;
+}
+
 // Other members open these links, so each one is normalized to https on the platform's own site.
 const profileLink = (platform: keyof typeof profileSites) =>
   text(profileLimits.social).transform((value, context) => {
@@ -57,13 +66,11 @@ const profileLink = (platform: keyof typeof profileSites) =>
     const site = profileSites[platform];
     const url = webLink(value);
     if (url && (url.hostname === site.host || url.hostname.endsWith(`.${site.host}`))) {
-      if (url.pathname.length > 1) {
-        url.protocol = 'https:';
-        return url.href;
-      }
+      url.protocol = 'https:';
+      if (url.pathname.length > 1 && !url.port) return withinLimit(url.href, profileLimits.social, context);
     } else {
       const handle = value.replace(/^@/, '');
-      if (site.handle.test(handle)) return site.link(handle);
+      if (site.handle.test(handle)) return withinLimit(site.link(handle), profileLimits.social, context);
     }
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -91,7 +98,7 @@ export const profileFieldsSchema = z.object({
   portfolio: text(profileLimits.link).transform((value, context) => {
     if (!value) return '';
     const url = webLink(value);
-    if (url) return url.href;
+    if (url) return withinLimit(url.href, profileLimits.link, context);
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a link to your site, like example.com.' });
     return z.NEVER;
   }),

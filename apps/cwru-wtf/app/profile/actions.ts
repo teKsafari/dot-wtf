@@ -1,7 +1,6 @@
 'use server';
 
 import { signOut } from '@logto/next/server-actions';
-import { refresh } from 'next/cache';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
 import {
@@ -75,7 +74,5 @@ export async function saveProfile(
     return { status: 'error', fields: submitted, message: 'We couldn’t save your profile. Please try again.' };
   }
 
-  // Evict the client's cached pages so Back cannot restore, and re-save, the old profile.
-  refresh();
   return { status: 'saved', fields: result.data, message: 'Profile saved.' };
 }

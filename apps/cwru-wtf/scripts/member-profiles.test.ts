@@ -116,6 +116,62 @@ test('social links reject other sites and unsafe schemes', () => {
   }
 });
 
+test('normalized links that outgrow the limit are rejected, never saved and dropped', () => {
+  const tooLong = [
+    ['github', `github.com/${'a'.repeat(189)}`],
+    ['github', `http://github.com/${'a'.repeat(182)}`],
+    ['linkedin', `https://www.linkedin.com/in/${'é'.repeat(60)}`],
+    ['portfolio', `example.com/${'a'.repeat(488)}`],
+    ['portfolio', `https://example.com/${'é'.repeat(100)}`],
+  ] as const;
+  for (const [field, input] of tooLong) {
+    const parsed = parseLink(field, input);
+    assert.equal(parsed.success, false, `${field}: ${input.slice(0, 40)}`);
+    assert.equal(!parsed.success && parsed.error.issues[0].message, 'This link is too long.');
+  }
+});
+
+test('Instagram dot handles and non-default ports are rejected', () => {
+  for (const value of ['.', '..', '@..', '.ada', 'ada.', 'ada..lovelace']) {
+    assert.equal(parseLink('instagram', value).success, false, `instagram: ${value}`);
+  }
+  for (const [field, value] of [
+    ['github', 'https://github.com:22/ada'],
+    ['github', 'github.com:8080/ada'],
+    ['instagram', 'https://www.instagram.com:444/ada'],
+    ['linkedin', 'https://www.linkedin.com:8443/in/ada'],
+  ] as const) {
+    assert.equal(parseLink(field, value).success, false, `${field}: ${value}`);
+  }
+  const upgraded = parseLink('github', 'http://github.com:443/ada');
+  assert.equal(upgraded.success && upgraded.data.github, 'https://github.com/ada');
+});
+
+test('a portfolio host with a port is a site, not a URL scheme', () => {
+  const parsed = parseLink('portfolio', 'ada.dev:8080/work');
+  assert.equal(parsed.success && parsed.data.portfolio, 'https://ada.dev:8080/work');
+  assert.equal(parseLink('portfolio', 'localhost:3000').success, false);
+});
+
+test('every accepted link round-trips through storage unchanged', () => {
+  const inputs = {
+    github: ['octocat', '@octocat', 'github.com/octocat', 'http://www.github.com/octocat/', 'https://gist.github.com/octocat/abc', `github.com/${'a'.repeat(170)}`, 'HTTPS://GitHub.com/Octocat'],
+    instagram: ['ada.lovelace', '@ada_lovelace', 'instagram.com/ada', 'https://m.instagram.com/ada/', 'a'.repeat(30)],
+    linkedin: ['ada-lovelace', 'linkedin.com/in/ada', 'https://uk.linkedin.com/in/ada?trk=x', 'https://www.linkedin.com/company/cwru', `https://www.linkedin.com/in/${'é'.repeat(10)}`],
+    portfolio: ['ada.dev', 'http://ada.dev/work', 'ada.dev:8080', 'https://bücher.example/', `example.com/${'a'.repeat(470)}`],
+  } as const;
+  for (const [field, values] of Object.entries(inputs) as [keyof typeof inputs, readonly string[]][]) {
+    for (const value of values) {
+      const first = parseLink(field, value);
+      assert.equal(first.success, true, `${field} accepts ${value.slice(0, 40)}`);
+      const stored = first.success ? first.data[field] : '';
+      const again = parseLink(field, stored);
+      assert.equal(again.success && again.data[field], stored, `${field} is stable for ${value.slice(0, 40)}`);
+      assert.deepEqual(safeSocialLinks({ [field]: stored }), { [field]: stored }, `${field} survives the read check`);
+    }
+  }
+});
+
 test('stored social links are re-checked before they are shown', () => {
   assert.deepEqual(safeSocialLinks({
     github: 'https://github.com/octocat',

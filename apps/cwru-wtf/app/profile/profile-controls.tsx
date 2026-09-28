@@ -1,7 +1,8 @@
 "use client"
 
-import { useActionState, useId, type ReactNode } from "react"
+import { useActionState, useEffect, useId, useRef, type ReactNode } from "react"
 import { useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
 import * as Avatar from "@radix-ui/react-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -148,9 +149,34 @@ export function ProfileForm({ initialFields }: { initialFields: ProfileFields })
     fields: initialFields,
   } satisfies ProfileFormState)
   const id = useId()
+  const router = useRouter()
+  const focusedOnSubmit = useRef<HTMLElement | null>(null)
+
+  // Refresh after the save settles, not inside the action, so the form unlocks right away.
+  // A refresh also clears cached pages, so Back cannot restore (and re-save) the old profile.
+  useEffect(() => {
+    if (state.status === "saved") router.refresh()
+  }, [state, router])
+
+  // Locking the fields drops focus to <body>; return it once they unlock.
+  useEffect(() => {
+    if (pending) return
+    const element = focusedOnSubmit.current
+    focusedOnSubmit.current = null
+    if (element?.isConnected && (document.activeElement === document.body || !document.activeElement)) {
+      element.focus()
+    }
+  }, [pending])
 
   return (
-    <form action={formAction} className="flex flex-col gap-6 text-left" noValidate>
+    <form
+      action={formAction}
+      onSubmit={() => {
+        focusedOnSubmit.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      }}
+      className="flex flex-col gap-6 text-left"
+      noValidate
+    >
       {/* React resets the form when the save settles, so nothing can be typed until then. */}
       <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
         <ProfileInput field={bioField} state={state} idPrefix={id} />

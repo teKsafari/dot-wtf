@@ -9,6 +9,7 @@ import {
   profileFieldsSchema,
   profileLimits,
   safeSocialLinks,
+  socialPlatforms,
   type ProfileFields,
   type SocialLinks,
   type SocialPlatform,
@@ -79,8 +80,10 @@ function toProfileFields({ socialLinks, ...fields }: ProfileRow): ProfileFields 
   };
 }
 
+// Fields arrive already validated; re-checking here would drop links silently instead of reporting them.
 function toProfileRow({ github, instagram, linkedin, portfolio, ...fields }: ProfileFields): ProfileRow {
-  return { ...fields, socialLinks: safeSocialLinks({ github, instagram, linkedin, portfolio }) };
+  const links = { github, instagram, linkedin, portfolio };
+  return { ...fields, socialLinks: Object.fromEntries(socialPlatforms.flatMap((platform) => links[platform] ? [[platform, links[platform]]] : [])) };
 }
 
 const memberProfileStore = createMemberProfiles({
