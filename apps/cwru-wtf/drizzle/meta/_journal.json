@@ -64,6 +64,13 @@
       "when": 1790537762027,
       "tag": "0008_member_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790621444319,
+      "tag": "0009_drop_admin_users",
+      "breakpoints": true
     }
   ]
 }

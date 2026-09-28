@@ -26,17 +26,6 @@ export const actionLogs = pgTable('action_logs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const adminUsers = pgTable('admin_users', {
-  id: serial('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  name: text('name').notNull(),
-  role: text('role').default('admin').notNull(), // 'admin', 'super_admin'
-  isActive: boolean('is_active').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
 // tekID owns name and photo; this holds what members edit on their dot wtf profile.
 export const memberProfiles = pgTable('member_profiles', {
   tekidUserId: text('tekid_user_id').primaryKey(),
@@ -52,5 +41,3 @@ export type Submission = typeof submissions.$inferSelect;
 export type NewSubmission = typeof submissions.$inferInsert;
 export type ActionLog = typeof actionLogs.$inferSelect;
 export type NewActionLog = typeof actionLogs.$inferInsert;
-export type AdminUser = typeof adminUsers.$inferSelect;
-export type NewAdminUser = typeof adminUsers.$inferInsert;
