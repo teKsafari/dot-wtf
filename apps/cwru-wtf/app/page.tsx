@@ -33,8 +33,7 @@ export default function Home() {
           <span className="vibe text-foreground">artists</span>,{" "}
            <span className="vibe text-foreground">engineers</span>,{" "}
           <span className="vibe text-foreground">hackers</span>, et al...
-          encouraging interdisciplinary collaborations among members of the CWRU
-          community.
+          encouraging interdisciplinary collaborations among young people.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
