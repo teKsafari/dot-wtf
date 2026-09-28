@@ -2,11 +2,14 @@
 
 import Link from "next/link"
 import * as Dialog from "@radix-ui/react-dialog"
-import { X } from "lucide-react"
+import { Github, Globe, Instagram, Linkedin, X } from "lucide-react"
 import { ProfileAvatar } from "@/app/profile/profile-controls"
+import { socialLinkLabels, socialPlatforms } from "@/lib/member-profile-fields"
 import type { DirectoryMember } from "@/lib/tekid/member-types"
 
 const unnamed = "Unnamed member"
+
+const socialIcons = { github: Github, instagram: Instagram, linkedin: Linkedin, portfolio: Globe }
 
 export default function MemberGrid({ members, viewerId }: {
   members: DirectoryMember[]
@@ -60,6 +63,7 @@ function MemberCard({ member, isViewer }: { member: DirectoryMember; isViewer: b
             <Dialog.Description className="mt-4 whitespace-pre-line break-words text-left text-body text-muted-foreground">
               {member.bio || `${name} hasn’t written a bio yet.`}
             </Dialog.Description>
+            <MemberLinks member={member} name={name} />
             {isViewer ? (
               <Link
                 href="/profile"
@@ -72,6 +76,32 @@ function MemberCard({ member, isViewer }: { member: DirectoryMember; isViewer: b
         </Dialog.Overlay>
       </Dialog.Portal>
     </Dialog.Root>
+  )
+}
+
+function MemberLinks({ member, name }: { member: DirectoryMember; name: string }) {
+  const platforms = socialPlatforms.filter((platform) => member.links[platform])
+  if (platforms.length === 0) return null
+
+  return (
+    <ul aria-label={`${name}’s links`} className="m-0 mt-6 flex list-none flex-wrap gap-2 p-0">
+      {platforms.map((platform) => {
+        const Icon = socialIcons[platform]
+        return (
+          <li key={platform}>
+            <a
+              href={member.links[platform]}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus-ring corner-squircle inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-foreground transition-[background-color,border-color] duration-150 hover:border-muted-foreground/35 hover:bg-secondary motion-reduce:transition-none"
+            >
+              <Icon aria-hidden="true" className="size-4" />
+              {socialLinkLabels[platform]}
+            </a>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

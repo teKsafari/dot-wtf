@@ -1,12 +1,13 @@
 'use server';
 
 import { signOut } from '@logto/next/server-actions';
+import { refresh } from 'next/cache';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
 import {
   profileFieldNames,
+  profileFieldsFromFormData,
   profileFieldsSchema,
-  type ProfileFields,
   type ProfileFormState,
 } from '@/lib/member-profile-fields';
 import { saveMemberProfile } from '@/lib/member-profiles';
@@ -36,10 +37,7 @@ export async function saveProfile(
   _previous: ProfileFormState,
   formData: FormData
 ): Promise<ProfileFormState> {
-  const submitted = Object.fromEntries(profileFieldNames.map((name) => {
-    const value = formData.get(name);
-    return [name, typeof value === 'string' ? value : ''];
-  })) as ProfileFields;
+  const submitted = profileFieldsFromFormData(formData);
 
   let auth;
   try {
@@ -77,5 +75,7 @@ export async function saveProfile(
     return { status: 'error', fields: submitted, message: 'We couldn’t save your profile. Please try again.' };
   }
 
+  // Evict the client's cached pages so Back cannot restore, and re-save, the old profile.
+  refresh();
   return { status: 'saved', fields: result.data, message: 'Profile saved.' };
 }

@@ -71,6 +71,13 @@
       "when": 1790621444319,
       "tag": "0009_drop_admin_users",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790621890763,
+      "tag": "0010_member_social_links",
+      "breakpoints": true
     }
   ]
 }

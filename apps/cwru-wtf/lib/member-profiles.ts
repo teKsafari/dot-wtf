@@ -3,11 +3,15 @@ import 'server-only';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { memberProfiles, submissions } from '@/lib/schema';
 import type { AuthSession } from '@/lib/tekid/types';
+import type { DirectoryMember } from '@/lib/tekid/member-types';
 import {
   emptyProfileFields,
   profileFieldsSchema,
   profileLimits,
+  safeSocialLinks,
   type ProfileFields,
+  type SocialLinks,
+  type SocialPlatform,
 } from './member-profile-fields';
 
 type ApplicationFields = Pick<ProfileFields, 'wtfIdea' | 'currentProject' | 'youtubeLink'>;
@@ -22,7 +26,7 @@ export interface MemberProfileView {
 export function importedProfileFields(application: ApplicationFields): ProfileFields {
   const link = profileFieldsSchema.shape.youtubeLink.safeParse(application.youtubeLink);
   return {
-    bio: '',
+    ...emptyProfileFields,
     wtfIdea: application.wtfIdea.trim().slice(0, profileLimits.text),
     currentProject: application.currentProject.trim().slice(0, profileLimits.text),
     youtubeLink: link.success ? link.data : '',
@@ -58,7 +62,26 @@ const profileColumns = {
   wtfIdea: memberProfiles.wtfIdea,
   currentProject: memberProfiles.currentProject,
   youtubeLink: memberProfiles.youtubeLink,
+  socialLinks: memberProfiles.socialLinks,
 };
+
+// The form edits each link as its own field; the table keeps them in one column.
+type ProfileRow = Omit<ProfileFields, SocialPlatform> & { socialLinks: SocialLinks };
+
+function toProfileFields({ socialLinks, ...fields }: ProfileRow): ProfileFields {
+  const links = safeSocialLinks(socialLinks);
+  return {
+    ...fields,
+    github: links.github ?? '',
+    instagram: links.instagram ?? '',
+    linkedin: links.linkedin ?? '',
+    portfolio: links.portfolio ?? '',
+  };
+}
+
+function toProfileRow({ github, instagram, linkedin, portfolio, ...fields }: ProfileFields): ProfileRow {
+  return { ...fields, socialLinks: safeSocialLinks({ github, instagram, linkedin, portfolio }) };
+}
 
 const memberProfileStore = createMemberProfiles({
   async findProfile(userId) {
@@ -68,7 +91,7 @@ const memberProfileStore = createMemberProfiles({
       .from(memberProfiles)
       .where(eq(memberProfiles.tekidUserId, userId))
       .limit(1);
-    return profile ?? null;
+    return profile ? toProfileFields(profile) : null;
   },
   async findApplication(email) {
     const { db } = await import('@/lib/db');
@@ -88,7 +111,7 @@ const memberProfileStore = createMemberProfiles({
     const { db } = await import('@/lib/db');
     const created = await db
       .insert(memberProfiles)
-      .values({ tekidUserId: userId, ...fields })
+      .values({ tekidUserId: userId, ...toProfileRow(fields) })
       .onConflictDoNothing({ target: memberProfiles.tekidUserId })
       .returning({ tekidUserId: memberProfiles.tekidUserId });
     return created.length > 0;
@@ -99,12 +122,13 @@ export const getMemberProfile = (claims: AuthSession) => memberProfileStore.getP
 
 export async function saveMemberProfile(userId: string, fields: ProfileFields): Promise<void> {
   const { db } = await import('@/lib/db');
+  const row = toProfileRow(fields);
   await db
     .insert(memberProfiles)
-    .values({ tekidUserId: userId, ...fields })
+    .values({ tekidUserId: userId, ...row })
     .onConflictDoUpdate({
       target: memberProfiles.tekidUserId,
-      set: { ...fields, updatedAt: new Date() },
+      set: { ...row, updatedAt: new Date() },
     });
 }
 
@@ -122,12 +146,14 @@ export async function hasApprovedApplication(email: string): Promise<boolean> {
   return Boolean(application);
 }
 
-export async function getMemberBios(userIds: string[]): Promise<Map<string, string>> {
+export type MemberCard = Pick<DirectoryMember, 'bio' | 'links'>;
+
+export async function getMemberCards(userIds: string[]): Promise<Map<string, MemberCard>> {
   if (userIds.length === 0) return new Map();
   const { db } = await import('@/lib/db');
   const rows = await db
-    .select({ id: memberProfiles.tekidUserId, bio: memberProfiles.bio })
+    .select({ id: memberProfiles.tekidUserId, bio: memberProfiles.bio, socialLinks: memberProfiles.socialLinks })
     .from(memberProfiles)
     .where(inArray(memberProfiles.tekidUserId, userIds));
-  return new Map(rows.map(({ id, bio }) => [id, bio]));
+  return new Map(rows.map(({ id, bio, socialLinks }) => [id, { bio, links: safeSocialLinks(socialLinks) }]));
 }

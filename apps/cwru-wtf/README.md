@@ -49,7 +49,7 @@ Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` and all nine `LOG
 
 ## tekID profiles
 
-[/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to a minimal name/photo profile. tekID owns the member’s identity and profile. [/admin](http://dot-wtf.localhost:1355/admin) uses the same tekID session; there is no separate admin password or login form. Organization membership and roles determine dashboard access.
+[/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to the member's editable profile (see [Member profiles and directory](#member-profiles-and-directory)). tekID owns the member’s identity and profile. [/admin](http://dot-wtf.localhost:1355/admin) uses the same tekID session; there is no separate admin password or login form. Organization membership and roles determine dashboard access.
 
 Use the **dot-wtf** Traditional web application in the tekID Logto console. Copy `LOGTO_APP_ID` and `LOGTO_APP_SECRET` into `.env.local`, set `LOGTO_BASE_URL`, and generate a separate `LOGTO_COOKIE_SECRET` of at least 32 characters (`openssl rand -hex 32`). These values are server-only; never prefix them with `NEXT_PUBLIC_` or commit secrets.
 
@@ -74,11 +74,11 @@ The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-s
 
 ## Member profiles and directory
 
-tekID owns each member's name and photo; the profile page links to tekID for changes. Everything else a member edits on [/profile](http://dot-wtf.localhost:1355/profile) lives in the `member_profiles` table, keyed by tekID user ID: a bio, their WTF idea, current project, and video link. Any signed-in tekID user can edit their own profile; the save action only ever writes the signed-in user's row.
+tekID owns each member's name and photo; the profile page links to tekID for changes. Everything else a member edits on [/profile](http://dot-wtf.localhost:1355/profile) lives in the `member_profiles` table, keyed by tekID user ID: a bio, social links (GitHub, Instagram, LinkedIn, and a portfolio site), their WTF idea, current project, and video link. Members can enter a username or a link. Each social link is stored as an `https` link on that platform's own site (a portfolio can be any `http` or `https` site). Stored links are checked again before they are rendered. Any signed-in tekID user can edit their own profile; the save action only ever writes the signed-in user's row.
 
 The first time someone opens their profile, if their tekID email is verified and matches an application's email (case-insensitively, most recent application first), the WTF idea, project, and video are copied from that application into their profile. This happens once. After that the profile is theirs, and later edits or applications never overwrite it. An unverified email never claims an application.
 
-[/members](http://dot-wtf.localhost:1355/members) shows every active member of this site's Logto organization as a grid; selecting someone opens a preview with their name, photo, and bio. Only active organization members can open it. Suspended accounts are hidden and cannot view it. The directory never exposes emails, roles, or the other profile fields. Membership comes from the same Management API credentials as the dashboard.
+[/members](http://dot-wtf.localhost:1355/members) shows every active member of this site's Logto organization as a grid; selecting someone opens a preview with their name, photo, bio, and social links. Only active organization members can open it. Suspended accounts are hidden and cannot view it. The directory never exposes emails, roles, or the WTF idea, project, and video fields, which only the member sees. Membership comes from the same Management API credentials as the dashboard.
 
 Apply the migration before deploying:
 
