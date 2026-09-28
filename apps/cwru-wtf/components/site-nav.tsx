@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { Calendar, Github, Instagram, LayoutDashboard, UserRound, Users } from "lucide-react"
-import { getDashboardAuthContext, TekidAuthorizationError } from "@/lib/tekid/authorization"
+import { getDashboardAuthContext, AuthorizationError } from "@/lib/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 
 const socialLinks = [
@@ -29,7 +29,7 @@ function Separator() {
 async function DashboardNavItem() {
   const auth = await getDashboardAuthContext().catch((error: unknown) => {
     if (error instanceof TekidProfileContractError) return null
-    if (error instanceof TekidAuthorizationError && error.status === 503) return null
+    if (error instanceof AuthorizationError && error.status === 503) return null
     throw error
   })
 

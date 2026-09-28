@@ -1,162 +1,172 @@
 import 'server-only';
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { memberProfiles, submissions } from '@/lib/schema';
-import type { AuthSession } from '@/lib/tekid/types';
-import type { DirectoryMember } from '@/lib/tekid/member-types';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import * as schema from './schema';
+import { memberAuditLogs, memberProfiles, submissions } from './schema';
+import type { AuthSession } from './tekid/types';
 import {
-  emptyProfileFields,
-  profileFieldsSchema,
-  profileLimits,
-  safeSocialLinks,
-  socialPlatforms,
-  type ProfileFields,
-  type SocialLinks,
-  type SocialPlatform,
+  applicationFieldsSchema, categoryOptions, emptyProfileFields, profileFieldsSchema,
+  profileLimits, safeSocialLinks, socialPlatforms,
+  type ProfileFields, type SocialLinks,
 } from './member-profile-fields';
 
-type ApplicationFields = Pick<ProfileFields, 'wtfIdea' | 'currentProject' | 'youtubeLink'>;
+export type ProfileDatabase = PostgresJsDatabase<typeof schema>;
+type ProfileTransaction = Parameters<Parameters<ProfileDatabase['transaction']>[0]>[0];
+type ProfileRow = typeof memberProfiles.$inferSelect;
+type LegacyApplication = Pick<typeof submissions.$inferSelect,
+  'name' | 'categories' | 'otherCategory' | 'whatsapp' | 'wtfIdea' | 'currentProject' | 'youtubeLink'>;
 
 export interface MemberProfileView {
   fields: ProfileFields;
-  // True only on the request that copied the member's application into their profile.
   imported: boolean;
+  status: ProfileRow['status'];
+  memberNumber: number | null;
+  submittedAt: string | null;
 }
 
-// Application answers become ordinary profile fields, so they must pass the same checks.
-export function importedProfileFields(application: ApplicationFields): ProfileFields {
-  const link = profileFieldsSchema.shape.youtubeLink.safeParse(application.youtubeLink);
+export class ProfileSubmissionError extends Error {}
+
+function safePicture(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
+
+export function importedProfileFields(application: LegacyApplication): ProfileFields {
+  const video = profileFieldsSchema.shape.youtubeLink.safeParse(application.youtubeLink);
+  let categories: string[] = [];
+  try {
+    const value: unknown = JSON.parse(application.categories);
+    if (Array.isArray(value)) categories = value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim());
+  } catch { /* Legacy free text is kept below as an Other category. */ }
+  const recognized = categories.filter((entry) => (categoryOptions as readonly string[]).includes(entry));
+  const unknown = categories.filter((entry) => !(categoryOptions as readonly string[]).includes(entry));
+  if (unknown.length && !recognized.includes('Other')) recognized.push('Other');
   return {
     ...emptyProfileFields,
+    name: application.name.trim().slice(0, 128),
+    categories: [...new Set(recognized)],
+    otherCategory: (application.otherCategory || unknown.join(', ')).trim().slice(0, 200),
+    whatsapp: (application.whatsapp ?? '').trim().slice(0, 40),
     wtfIdea: application.wtfIdea.trim().slice(0, profileLimits.text),
     currentProject: application.currentProject.trim().slice(0, profileLimits.text),
-    youtubeLink: link.success ? link.data : '',
+    youtubeLink: video.success ? video.data : '',
   };
 }
 
-export function createMemberProfiles(dependencies: {
-  findProfile: (userId: string) => Promise<ProfileFields | null>;
-  findApplication: (email: string) => Promise<ApplicationFields | null>;
-  // Resolves false when another request created the profile first.
-  insertProfile: (userId: string, fields: ProfileFields) => Promise<boolean>;
-}) {
-  async function getProfile(claims: AuthSession): Promise<MemberProfileView> {
-    const saved = await dependencies.findProfile(claims.sub);
-    if (saved) return { fields: saved, imported: false };
+export function profileFieldsFromRow(row: ProfileRow): ProfileFields {
+  const links = safeSocialLinks(row.socialLinks);
+  return {
+    name: row.name, institution: row.institution, categories: row.categories,
+    otherCategory: row.otherCategory, whatsapp: row.whatsapp,
+    bio: row.bio, wtfIdea: row.wtfIdea, currentProject: row.currentProject,
+    youtubeLink: row.youtubeLink, github: links.github ?? '',
+    instagram: links.instagram ?? '', linkedin: links.linkedin ?? '', portfolio: links.portfolio ?? '',
+  };
+}
 
-    // Only an address tekID has verified can claim an application.
-    const application = claims.email_verified
-      ? await dependencies.findApplication(claims.email)
-      : null;
-    if (!application) return { fields: emptyProfileFields, imported: false };
+export function profileFieldsToRow({ github, instagram, linkedin, portfolio, ...fields }: ProfileFields) {
+  const links = { github, instagram, linkedin, portfolio };
+  const socialLinks: SocialLinks = Object.fromEntries(socialPlatforms.flatMap((platform) => links[platform] ? [[platform, links[platform]]] : []));
+  return { ...fields, socialLinks };
+}
 
-    const fields = importedProfileFields(application);
-    if (await dependencies.insertProfile(claims.sub, fields)) return { fields, imported: true };
-    return { fields: (await dependencies.findProfile(claims.sub)) ?? fields, imported: false };
+function profileView(row: ProfileRow, imported = false): MemberProfileView {
+  return {
+    fields: profileFieldsFromRow(row), imported, status: row.status,
+    memberNumber: row.memberNumber, submittedAt: row.submittedAt?.toISOString() ?? null,
+  };
+}
+
+// Injecting the database lets integration tests exercise the actual transactions.
+export function createProfileStore(database: ProfileDatabase) {
+  async function initializeProfile(tx: ProfileTransaction, claims: AuthSession) {
+    const [saved] = await tx.select().from(memberProfiles).where(eq(memberProfiles.tekidUserId, claims.sub)).for('update');
+    const identity = { email: claims.email, emailVerified: claims.email_verified, picture: safePicture(claims.picture) };
+    // Pre-migration rows have no email. Hydrate newly added application fields once,
+    // without overwriting existing profile answers or any local access decision.
+    const firstVerifiedVisit = Boolean(saved?.email && !saved.emailVerified && claims.email_verified);
+    const [previousImport] = firstVerifiedVisit ? await tx.select({ id: memberAuditLogs.id })
+      .from(memberAuditLogs).where(and(eq(memberAuditLogs.targetId, claims.sub),
+        eq(memberAuditLogs.action, 'profile.legacy-imported'))).limit(1) : [];
+    if (saved?.email && (!firstVerifiedVisit || previousImport)) {
+      const [row] = await tx.update(memberProfiles).set(identity)
+        .where(eq(memberProfiles.tekidUserId, claims.sub)).returning();
+      return { row, imported: false };
+    }
+    const [application] = claims.email_verified
+      ? await tx.select().from(submissions)
+        .where(sql`lower(${submissions.email}) = ${claims.email.trim().toLowerCase()}`)
+        .orderBy(desc(submissions.createdAt), desc(submissions.id)).limit(1)
+      : [];
+    const importedFields = application ? importedProfileFields(application) : { ...emptyProfileFields, name: claims.name };
+    const fields: ProfileFields = saved ? {
+      ...importedFields, ...profileFieldsFromRow(saved), name: saved.name || importedFields.name || claims.name,
+      categories: saved.categories.length ? saved.categories : importedFields.categories,
+      otherCategory: saved.otherCategory || importedFields.otherCategory,
+      whatsapp: saved.whatsapp || importedFields.whatsapp,
+    } : { ...importedFields, name: importedFields.name || claims.name };
+    // A first unverified sign-in cannot import by email. When verification arrives,
+    // fill only still-empty answers; keep every answer already saved by the user.
+    if (saved && firstVerifiedVisit && application) {
+      const existing = profileFieldsFromRow(saved);
+      for (const field of ['name', 'otherCategory', 'whatsapp', 'wtfIdea', 'currentProject', 'youtubeLink'] as const) {
+        fields[field] = existing[field] || importedFields[field];
+      }
+    }
+    const values = { ...profileFieldsToRow(fields), ...identity };
+    const [row] = saved
+      ? await tx.update(memberProfiles).set(values).where(eq(memberProfiles.tekidUserId, claims.sub)).returning()
+      : await tx.insert(memberProfiles).values({ tekidUserId: claims.sub, ...values }).returning();
+    if (claims.email_verified) await tx.insert(memberAuditLogs).values({
+      actorId: claims.sub, targetId: claims.sub, action: 'profile.legacy-imported',
+      details: { applicationFound: Boolean(application) },
+    });
+    return { row, imported: Boolean(application) };
   }
 
-  return { getProfile };
-}
-
-const profileColumns = {
-  bio: memberProfiles.bio,
-  wtfIdea: memberProfiles.wtfIdea,
-  currentProject: memberProfiles.currentProject,
-  youtubeLink: memberProfiles.youtubeLink,
-  socialLinks: memberProfiles.socialLinks,
-};
-
-// The form edits each link as its own field; the table keeps them in one column.
-type ProfileRow = Omit<ProfileFields, SocialPlatform> & { socialLinks: SocialLinks };
-
-function toProfileFields({ socialLinks, ...fields }: ProfileRow): ProfileFields {
-  const links = safeSocialLinks(socialLinks);
-  return {
-    ...fields,
-    github: links.github ?? '',
-    instagram: links.instagram ?? '',
-    linkedin: links.linkedin ?? '',
-    portfolio: links.portfolio ?? '',
-  };
-}
-
-// Fields arrive already validated; re-checking here would drop links silently instead of reporting them.
-function toProfileRow({ github, instagram, linkedin, portfolio, ...fields }: ProfileFields): ProfileRow {
-  const links = { github, instagram, linkedin, portfolio };
-  return { ...fields, socialLinks: Object.fromEntries(socialPlatforms.flatMap((platform) => links[platform] ? [[platform, links[platform]]] : [])) };
-}
-
-const memberProfileStore = createMemberProfiles({
-  async findProfile(userId) {
-    const { db } = await import('@/lib/db');
-    const [profile] = await db
-      .select(profileColumns)
-      .from(memberProfiles)
-      .where(eq(memberProfiles.tekidUserId, userId))
-      .limit(1);
-    return profile ? toProfileFields(profile) : null;
-  },
-  async findApplication(email) {
-    const { db } = await import('@/lib/db');
-    const [application] = await db
-      .select({
-        wtfIdea: submissions.wtfIdea,
-        currentProject: submissions.currentProject,
-        youtubeLink: submissions.youtubeLink,
-      })
-      .from(submissions)
-      .where(sql`lower(${submissions.email}) = ${email.trim().toLowerCase()}`)
-      .orderBy(desc(submissions.createdAt))
-      .limit(1);
-    return application ?? null;
-  },
-  async insertProfile(userId, fields) {
-    const { db } = await import('@/lib/db');
-    const created = await db
-      .insert(memberProfiles)
-      .values({ tekidUserId: userId, ...toProfileRow(fields) })
-      .onConflictDoNothing({ target: memberProfiles.tekidUserId })
-      .returning({ tekidUserId: memberProfiles.tekidUserId });
-    return created.length > 0;
-  },
-});
-
-export const getMemberProfile = (claims: AuthSession) => memberProfileStore.getProfile(claims);
-
-export async function saveMemberProfile(userId: string, fields: ProfileFields): Promise<void> {
-  const { db } = await import('@/lib/db');
-  const row = toProfileRow(fields);
-  await db
-    .insert(memberProfiles)
-    .values({ tekidUserId: userId, ...row })
-    .onConflictDoUpdate({
-      target: memberProfiles.tekidUserId,
-      set: { ...row, updatedAt: new Date() },
+  async function getProfile(claims: AuthSession): Promise<MemberProfileView> {
+    return database.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('dot-wtf:membership', 0))`);
+      const { row, imported } = await initializeProfile(tx, claims);
+      return profileView(row, imported);
     });
+  }
+
+  async function saveProfile(claims: AuthSession, input: ProfileFields, intent: 'save' | 'submit' = 'save'): Promise<MemberProfileView> {
+    const fields = (intent === 'submit' ? applicationFieldsSchema : profileFieldsSchema).parse(input);
+    if (intent === 'submit' && !claims.email_verified) {
+      throw new ProfileSubmissionError('Verify your email in tekID, then sign in again before submitting your application.');
+    }
+    return database.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('dot-wtf:membership', 0))`);
+      const { row: current } = await initializeProfile(tx, claims);
+      if (intent === 'submit' && current.status === 'suspended') {
+        throw new ProfileSubmissionError('Your membership is suspended. Contact an admin before applying again.');
+      }
+      const isNewSubmission = intent === 'submit' && (current.status === 'draft' || current.status === 'rejected');
+      const [row] = await tx.update(memberProfiles).set({
+        ...profileFieldsToRow(fields), updatedAt: new Date(),
+        ...(isNewSubmission ? { status: 'pending' as const, submittedAt: new Date() } : {}),
+      }).where(eq(memberProfiles.tekidUserId, claims.sub)).returning();
+      if (isNewSubmission) await tx.insert(memberAuditLogs).values({
+        actorId: claims.sub, targetId: claims.sub, action: 'profile.submitted', details: { previousStatus: current.status },
+      });
+      return profileView(row);
+    });
+  }
+  return { getProfile, saveProfile };
 }
 
-export async function hasApprovedApplication(email: string): Promise<boolean> {
-  const { db } = await import('@/lib/db');
-  const [application] = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .where(and(
-      sql`lower(${submissions.email}) = ${email.trim().toLowerCase()}`,
-      eq(submissions.isApproved, true),
-      isNull(submissions.archivedAt)
-    ))
-    .limit(1);
-  return Boolean(application);
+export async function getMemberProfile(claims: AuthSession) {
+  const { db } = await import('./db');
+  return createProfileStore(db).getProfile(claims);
 }
 
-export type MemberCard = Pick<DirectoryMember, 'bio' | 'links'>;
-
-export async function getMemberCards(userIds: string[]): Promise<Map<string, MemberCard>> {
-  if (userIds.length === 0) return new Map();
-  const { db } = await import('@/lib/db');
-  const rows = await db
-    .select({ id: memberProfiles.tekidUserId, bio: memberProfiles.bio, socialLinks: memberProfiles.socialLinks })
-    .from(memberProfiles)
-    .where(inArray(memberProfiles.tekidUserId, userIds));
-  return new Map(rows.map(({ id, bio, socialLinks }) => [id, { bio, links: safeSocialLinks(socialLinks) }]));
+export async function saveMemberProfile(claims: AuthSession, fields: ProfileFields, intent: 'save' | 'submit' = 'save') {
+  const { db } = await import('./db');
+  return createProfileStore(db).saveProfile(claims, fields, intent);
 }

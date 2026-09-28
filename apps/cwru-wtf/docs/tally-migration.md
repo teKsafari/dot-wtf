@@ -1,11 +1,10 @@
-# Tally application migration runbook
+# Historical Tally application migration
 
-The published application form is `https://tally.so/r/lbp7OX`. It is embedded
-on `cwru.wtf`, while the previous local submission endpoint returns `410`.
-Tally collects applications and `POST /api/tally/webhook` copies new responses
-into the local `submissions` table used by the admin dashboard.
+This document preserves the earlier migration and reconciliation record. Current intake uses the authenticated `/profile` application: `/join` redirects there, the Tally embed is removed, and both `POST /api/submissions` and `POST /api/tally/webhook` return `410 Gone` without creating local applications.
 
-## Production verification
+Existing `submissions` rows remain historical records. Their old approvals do not grant local membership. Eligible verified users can reuse historical answers in a profile, then submit the current application for local review. See [the local membership rollout](local-membership-rollout.md).
+
+## Retired production verification (2026-09-18)
 
 The production embed and webhook were verified on 2026-09-18.
 
@@ -68,52 +67,11 @@ Tally's recoverable Trash. Their corrected replacements are in the live
 Missing legacy phones and two unusable historical phone strings are blank in
 the normal phone question. Their exact originals remain in `legacy_record_json`.
 
-## Runtime configuration
+## Retired configuration and webhook
 
-Set these values in every deployed environment:
+The historical integration used `TALLY_FORM_ID`, `TALLY_WEBHOOK_SECRET`, and `TALLY_FIELD_KEYS`, and verified signed deliveries before inserting `submissions`. Those settings no longer enable intake: the webhook returns 410 unconditionally. Do not resend old deliveries expecting new membership or application rows.
 
-- `TALLY_FORM_ID=lbp7OX`
-- `TALLY_WEBHOOK_SECRET`: the exact secret configured on the Tally webhook
-- `TALLY_FIELD_KEYS`: the one-line JSON below
-
-```json
-{
-  "name": "question_QBV8a7",
-  "email": "question_9JQ2gQ",
-  "whatsapp": "question_exR9je",
-  "categories": "question_WpzlkN",
-  "otherCategory": "question_ardZPB",
-  "wtfIdea": "question_6QNrzk",
-  "currentProject": "question_79x4gZ",
-  "youtubeLink": "question_b4dNEL",
-  "otherCategoryOptionId": "784fb875-8f79-40a3-acf7-286060fc241b"
-}
-```
-
-The eight question keys come from `data.fields[].key`; the Other option ID
-comes from the categories field's `options[].id`. Labels are display text. If a
-Tally question is recreated, update its machine key before publishing.
-
-The form ID is also hard-coded in `components/tally-application-form.tsx` and
-`app/api/submissions/route.ts`. Update all three locations if the form changes.
-The dark theme, Nunito, Klariti mark, duplicate protection, and required-phone
-setting live inside Tally because host CSS cannot style a cross-origin iframe.
-
-## Webhook behavior
-
-The route verifies `Tally-Signature`, enforces a 1 MB limit, checks the form,
-and revalidates every application field. `eventType` may be absent on Tally
-dashboard test or resend deliveries. When present, it must be `FORM_RESPONSE`.
-
-A new response becomes active and pending. The Tally submission ID makes
-automatic and manual replays idempotent. A different response using an email
-already present locally returns `200 duplicate_email` and does not create or
-change a local row, including for archived, approved, or waitlisted records.
-That existing-email policy is retained for this release.
-
-Submission audit logging is best effort. The pre-existing production database
-does not contain `action_logs`; a missing audit table does not fail application
-capture. This is an accepted release behavior rather than an open gate.
+The old Tally form may still exist as an external historical source. Disabling its public intake/webhook is an operator action in Tally; removing the website embed does not delete its response data. Preserve the export and reconciliation material below before changing the external form.
 
 ## Private export and reconciliation
 
@@ -141,8 +99,9 @@ Protect response data before any restore or rollback:
    locally archived applications into Tally unless that scope is approved.
 4. Treat local database rows as the historical source of truth. Do not replace
    original timestamps or decisions with Tally's received time.
-5. To pause intake, disable the Tally webhook or public form without deleting
-   Tally responses, dropping `tally_submission_id`, or rewriting local rows.
+5. The site no longer accepts Tally intake. If retiring the external form, disable
+   its public intake/webhook without deleting responses, dropping
+   `tally_submission_id`, or rewriting historical local rows.
 6. Verify the synthetic release rows separately before removing them. Their
    removal must not change the original 43-row baseline or the 37 migrated
    source records.

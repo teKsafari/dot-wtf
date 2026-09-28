@@ -38,18 +38,18 @@ pnpm install
 pnpm dev
 
 # Database migrations
-pnpm db:push
+pnpm db:migrate
 ```
 
 Open [http://dot-wtf.localhost:1355](http://dot-wtf.localhost:1355). Portless manages the app’s internal port.
 
-Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` and all nine `LOGTO_*` values before starting or building. [`env.ts`](env.ts) exposes the typed configuration, validated with `@t3-oss/env-core` and Zod. Application code imports `env` instead of reading `process.env`; the schema lives in [`lib/env-schema.ts`](lib/env-schema.ts). Next.js loads `.env` files, and CLI entry points that import application modules use `scripts/load-env.ts`. The environment module does not load files.
+Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` and the four `LOGTO_*` sign-in values before starting or building. [`env.ts`](env.ts) exposes the typed configuration, validated with `@t3-oss/env-core` and Zod. Application code imports `env` instead of reading `process.env`; the schema lives in [`lib/env-schema.ts`](lib/env-schema.ts). Next.js loads `.env` files, and CLI entry points that import application modules use `scripts/load-env.ts`. The environment module does not load files.
 
-`next.config.mjs` imports the validation before development, build, and server startup, so invalid required settings stop the command with the variable names. Tally settings remain optional; the webhook returns 503 when they are not configured. Turbo forwards and hashes the required Logto variables for builds. `LOGTO_BASE_URL` is the application's HTTP(S) origin and must use HTTPS for a production build. To verify a production build locally, run `LOGTO_BASE_URL=https://cwru.wtf pnpm build`; keep the local `.env.local` origin set to Portless for development.
+`next.config.mjs` imports the validation before development, build, and server startup, so invalid required settings stop the command with the variable names. Tally settings are optional legacy configuration; both former intake endpoints return 410 and current applications are submitted through `/profile`. Turbo forwards and hashes the required Logto variables for builds. `LOGTO_BASE_URL` is the application's HTTP(S) origin and must use HTTPS for a production build. To verify a production build locally, run `LOGTO_BASE_URL=https://cwru.wtf pnpm build`; keep the local `.env.local` origin set to Portless for development.
 
 ## tekID profiles
 
-[/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to the member's editable profile (see [Member profiles and directory](#member-profiles-and-directory)). tekID owns the member’s identity and profile. [/admin](http://dot-wtf.localhost:1355/admin) uses the same tekID session; there is no separate admin password or login form. Organization membership and roles determine dashboard access.
+[/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to the member's editable profile (see [Member applications and directory](#member-applications-and-directory)). tekID provides identity claims; the member edits their local application profile in PostgreSQL. [/admin](http://dot-wtf.localhost:1355/admin) uses the same tekID session; there is no separate admin password or login form. Approved local membership and a local dashboard role determine dashboard access.
 
 Use the **dot-wtf** Traditional web application in the tekID Logto console. Copy `LOGTO_APP_ID` and `LOGTO_APP_SECRET` into `.env.local`, set `LOGTO_BASE_URL`, and generate a separate `LOGTO_COOKIE_SECRET` of at least 32 characters (`openssl rand -hex 32`). These values are server-only; never prefix them with `NEXT_PUBLIC_` or commit secrets.
 
@@ -60,9 +60,9 @@ Register these exact URLs in that application:
 | Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/profile` |
 | Production | `https://cwru.wtf/api/tekid/callback` | `https://cwru.wtf/profile` |
 
-Set `LOGTO_BASE_URL=https://cwru.wtf` and all nine Logto environment variables in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.org/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Organization roles are read through the Management API rather than copied from ID-token claims.
+Set `LOGTO_BASE_URL=https://cwru.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.org/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
 
-For Vercel Preview deployments, set the required application credentials (`LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET`) for **all Preview branches**, along with the required database, Management API, organization, and role settings. A value scoped to one branch does not configure future branches. Keep the cookie secret consistent across deployments of a branch so existing sessions remain readable.
+For Vercel Preview deployments, set the required application credentials (`LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET`) for **all Preview branches**, along with the database setting. Management API credentials and organization role IDs are not runtime configuration. A value scoped to one branch does not configure future branches. Keep the cookie secret consistent across deployments of a branch so existing sessions remain readable.
 
 When `VERCEL_ENV=preview` and `LOGTO_BASE_URL` is absent or empty, the application derives its origin as `https://` plus Vercel's `VERCEL_BRANCH_URL`, the stable branch alias. Vercel system environment variables must be available to the build and runtime; Turbo forwards and hashes both variables. The branch value must be a hostname without a scheme, port, path, credentials, query, fragment, or whitespace. An explicit `LOGTO_BASE_URL`, including an existing branch-specific override, takes precedence and keeps the same origin validation. Production and local development still require an explicit origin. Do not enter shell-style `$VERCEL_BRANCH_URL` interpolation as a dashboard value.
 
@@ -78,58 +78,42 @@ The tekID app logo uses the shared symbol-and-`wtf` wordmark assets in `public/d
 
 The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses the site's default light palette and rounded font stack, with charcoal `#1A1A1A` configured for both brand-color fields. At desktop widths, a warm-gray side panel shows the existing laptop cat from `https://cwru.wtf/cat-pc.png` and “create beyond the possible” At widths below 900px or heights below 560px, the decorative panel disappears so the form can use the whole screen. The illustration also shrinks with viewport height. The shared sign-in, registration, and recovery layouts retain their original controls and validation; the Google button stays above the email form. Nunito is loaded as the cross-platform fallback to SF Pro Rounded. App CSS replaces shared tekID CSS, so keep this copy in sync with the console. These settings apply only to the dot-wtf application.
 
-## Member profiles and directory
+## Member applications and directory
 
-tekID owns each member's name and photo; the profile page links to tekID for changes. Everything else a member edits on [/profile](http://dot-wtf.localhost:1355/profile) lives in the `member_profiles` table, keyed by tekID user ID: a bio, social links (GitHub, Instagram, LinkedIn, and a portfolio site), their WTF idea, current project, and video link. Members can enter a username or a link. Each social link is stored as an `https` link on that platform's own site (a portfolio can be any `http` or `https` site). Stored links are checked again before they are rendered. Any signed-in tekID user can edit their own profile; the save action only ever writes the signed-in user's row.
+Logto handles sign-in and identity claims. PostgreSQL owns the application, membership status, dashboard role, and unique member number. `/join` redirects to [/profile](http://dot-wtf.localhost:1355/profile); the Tally embed and both old intake routes are retired.
 
-The first time someone opens their profile, if their tekID email is verified and matches an application's email (case-insensitively, most recent application first), the WTF idea, project, and video are copied from that application into their profile. This happens once. After that the profile is theirs, and later edits or applications never overwrite it. An unverified email never claims an application.
+A signed-in user can save a draft profile, then submit the complete application for review. It includes their name, interests, institution and location, WhatsApp number, bio, WTF idea, current project, application video, portfolio, and optional social links. Submission requires a verified email and all required answers. Drafts and rejected applications can be edited and submitted; pending applications wait for review. Approved members can keep their profile current. A suspended profile keeps its data and number but has no member access.
 
-[/members](http://dot-wtf.localhost:1355/members) shows every active member of this site's Logto organization as a grid; selecting someone opens a preview with their name, photo, bio, and social links. Only active organization members can open it. Suspended accounts are hidden and cannot view it. The directory never exposes emails, roles, or the WTF idea, project, and video fields, which only the member sees. Membership comes from the same Management API credentials as the dashboard.
+The first eligible verified sign-in can copy matching historical application answers into the local profile, using the latest case-insensitive email match. This does not approve membership. The import is marked in the audit log, so later profile edits or email verification changes do not repeatedly overwrite answers. An unverified email never claims a historical application.
 
-Apply the migration before deploying:
+[/members](http://dot-wtf.localhost:1355/members) is visible only to approved local members and shows approved profiles with their member number, name, photo, bio, and social links. Emails, contact details, roles, and application answers are limited to the member and authorized dashboard reviewers. Logto organization membership no longer grants directory access.
 
-```bash
-pnpm db:migrate
-```
+## Local roles and dashboard access
 
-## Organization roles and dashboard access
+The **Applications & members** dashboard opens on pending profiles. Reviewers read the full submitted application and approve or reject it. Approval adds the profile to the directory and assigns the next unused member number in approval order. An admin can choose a custom number at approval or change an existing number; duplicate numbers are rejected. Numbers remain attached to rejected or suspended profiles and are not automatically reused.
 
-Each deployed entity site uses its own Logto organization, selected by `LOGTO_ORGANIZATION_ID`. Create two **User organization roles** in Logto's organization template: `dot-wtf:admin` and `dot-wtf:instance-lead`. Logto shares the role catalog across its tenant; the `dot-wtf:` prefix identifies which application defines these roles. Assignments belong to a specific organization; an admin of another entity does not gain access to this site's dashboard.
-
-| Logto role name | App alias | Configured role ID |
-| --- | --- | --- |
-| `dot-wtf:admin` | `admin` | `LOGTO_ADMIN_ROLE_ID` |
-| `dot-wtf:instance-lead` | `instance-lead` | `LOGTO_INSTANCE_LEAD_ROLE_ID` |
-
-The app's TypeScript types, dashboard inputs, and CLI keep the short aliases. Types check those labels during development; server authorization compares the configured role IDs and permissions at runtime. The prefix makes the shared catalog clearer, while the organization and ID checks enforce access. For existing installations, rename the two Logto roles in place to retain their IDs, permissions, and user assignments; the environment values do not change. Roles are never inferred from a user's email, name, or optional username.
-
-| Access | Ordinary member | `instance-lead` | `admin` |
+| Access | Approved member | `instance-lead` | `admin` |
 | --- | --- | --- | --- |
-| View and edit their own profile | Yes | Yes | Yes |
 | View the member directory | Yes | Yes | Yes |
-| Open dashboard and manage submissions | No | Yes | Yes |
-| View members and add existing tekID users as ordinary members | No | Yes | Yes |
-| Assign or remove `admin` / `instance-lead` roles | No | No | Yes |
+| Review ordinary applicants and suspend ordinary members | No | Yes | Yes |
+| Review or suspend dashboard staff | No | No | Yes |
+| Assign or change member numbers | No | No | Yes |
+| Assign `admin` / `instance-lead` roles to approved members | No | No | Yes |
 
-An ordinary member has organization membership without either privileged role; no separate `member` role is needed. A tekID user can view `/profile` before being added to the organization. Dashboard role changes affect only the two configured roles within this site's organization.
+Every protected page and API reads local membership. Membership changes share a database lock, recheck the acting user's privileges after acquiring it, and record an audit event. Administrators cannot demote or suspend themselves, and the last active administrator is protected. **Historical applications** is a separate read-only view: its old review states never grant current membership. The earlier migration `0009` removed the unused password-based `admin_users` table; `0011_local_membership` adds local membership fields, the number counter, and audit records.
 
-Give both organization roles the permissions `dashboard:access`, `submissions:read`, `submissions:manage`, `members:read`, and `members:invite`. Give only `dot-wtf:admin` the additional permission `members:assign-roles`. These are organization permissions in Logto's organization template; their names remain unchanged by the role prefix. The app requires the configured role ID and the permission for the requested action; it never allows an instance-lead to assign roles even if that permission is accidentally added to the role in Logto.
-
-Configure a separate **Machine-to-machine application** with access to the Logto Management API, and set `LOGTO_MANAGEMENT_APP_ID` and `LOGTO_MANAGEMENT_APP_SECRET`. Set `LOGTO_ADMIN_ROLE_ID` and `LOGTO_INSTANCE_LEAD_ROLE_ID` to the distinct IDs of the corresponding User organization roles. These are different credentials from the Traditional web application's `LOGTO_APP_ID` and `LOGTO_APP_SECRET`. The official `@logto/api` SDK obtains and refreshes the management token for the self-hosted API resource `https://default.logto.app/api`. See [Logto Management API setup](https://docs.logto.io/integrate-logto/interact-with-management-api).
-
-Dashboard pages and every admin API authorize the acting tekID user on the server using current organization roles, permissions, and account suspension state from Logto. The Management API check is not cached across requests, so removing a role takes effect on the next protected request without requiring a new sign-in. A failed role lookup does not grant access. The previous NextAuth credentials flow and `AUTH_SECRET` configuration are no longer used, and migration `0009` drops the old password-based `admin_users` table.
-
-The **Members** dashboard adds an existing tekID account using an exact primary-email match. Someone without an account must register through tekID first. This implementation does not create pending invitations or send invitation emails. An instance-lead can add ordinary members; only an admin can choose or change privileged roles. User IDs from the matched account identify subsequent role assignments. An admin cannot remove their own admin role, and removing another admin requires another active admin to remain. Member changes are serialized through a database lock and recheck the acting user's access after acquiring it. Unrelated organization roles are preserved.
-
-Bootstrap the first administrator from a trusted terminal after configuring the organization and role IDs:
+For the initial local administrator, have the intended person sign in with a verified email and open `/profile`, then run from a trusted operator environment:
 
 ```bash
+pnpm create-admin --email member@example.org --role admin --dry-run
 pnpm create-admin --email member@example.org --role admin
 ```
 
-The same command accepts `--role instance-lead`. It requires a unique existing primary-email match, rejects suspended accounts, verifies that the configured role ID belongs to the expected prefixed User organization role, and adds membership and that role without replacing existing assignments. It reads back the assignment before reporting success. Rerunning is safe: Logto ignores memberships and role assignments already present. It never creates local passwords. This command uses the management credential directly and is intended for trusted operators; routine changes use the dashboard's admin-only role checks.
+Use `--user-id` instead of `--email` if email matches are ambiguous. The command accepts `--role instance-lead` and uses only `DATABASE_URL`. It requires one existing verified local profile, refuses rejected or suspended accounts and administrator demotion, preserves an existing number, and otherwise allocates one under the shared lock. This operator-only bootstrap intentionally permits an incomplete profile to become approved; routine applicants use dashboard review. Repeating an unchanged grant is a no-op. It never calls Logto or creates a password.
 
-Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm test:profiles`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
+Before switching an existing installation, follow [the local membership rollout](docs/local-membership-rollout.md). `pnpm import:logto-members` prepares a dry-run plan of current Logto organization membership. Only `--apply` writes it to PostgreSQL, in one transaction. Prior imports and local decisions are preserved, including later revocations. Keep import-only Management API credentials in the operator environment; remove them from the deployed app after cutover.
+
+Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm test:profiles`, `pnpm test:operators`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
 
 ---
 

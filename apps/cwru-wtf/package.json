@@ -10,19 +10,20 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "create-admin": "tsx scripts/create-admin.ts",
+    "create-admin": "node --conditions=react-server --import tsx scripts/create-admin.ts",
+    "import:logto-members": "node --conditions=react-server --import tsx scripts/import-logto-members.ts",
     "migrate-database": "node scripts/run-migrate-database.js",
     "tally:export": "tsx scripts/export-tally-migration.ts",
     "test:tally": "tsx --test scripts/tally-webhook.test.ts",
     "test:env": "tsx --test scripts/env.test.ts",
     "test:tekid": "node --conditions=react-server --import tsx --test scripts/tekid.test.ts scripts/tekid-redirects.test.ts",
-    "test:admin": "node --conditions=react-server --import tsx --test scripts/tekid-authorization.test.ts",
-    "test:profiles": "node --conditions=react-server --import tsx --test scripts/member-profiles.test.ts"
+    "test:admin": "node --conditions=react-server --import tsx --test scripts/local-members.test.ts scripts/local-members.integration.test.ts",
+    "test:profiles": "node --conditions=react-server --import tsx --test scripts/member-profile-fields.test.ts scripts/member-profiles.test.ts",
+    "test:operators": "node --conditions=react-server --import tsx --test scripts/member-operators.test.ts scripts/member-operators.integration.test.ts"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",
     "@hookform/resolvers": "^3.9.1",
-    "@logto/api": "^1.43.0",
     "@logto/next": "^4.2.11",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -85,6 +86,7 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@logto/api": "^1.43.0",
     "@next/env": "16.3.3",
     "@types/node": "^22",
     "@types/react": "^19",

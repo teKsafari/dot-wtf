@@ -1,32 +1,14 @@
-import { NextResponse } from 'next/server';
-import { isNull } from 'drizzle-orm';
-import { db } from '@/lib/db';
-import { submissions } from '@/lib/schema';
+import { requireDashboardPermission } from '@/lib/authorization';
+import { memberApiError } from '@/lib/member-response';
 
 export async function GET() {
   try {
-    // Test database connection and schema
-    const testSubmissions = await db
-      .select()
-      .from(submissions)
-      .where(isNull(submissions.archivedAt))
-      .limit(5);
-    
-    return NextResponse.json({
-      status: 'OK',
-      message: 'Database connection successful',
-      schemaTest: {
-        submissionsTable: 'exists',
-        sampleData: testSubmissions.length,
-        pendingByDefault: testSubmissions.every(s => s.isApproved === null || typeof s.isApproved === 'boolean')
-      }
+    await requireDashboardPermission('dashboard:access');
+    // Permission checks query Postgres, so success also confirms database connectivity.
+    return Response.json({ status: 'OK', message: 'Local membership database is available.' }, {
+      headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch (error) {
-    console.error('Database test failed:', error);
-    return NextResponse.json({
-      status: 'ERROR',
-      message: 'Database connection failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return memberApiError(error);
   }
 }

@@ -1,7 +1,18 @@
 import { z } from 'zod';
 
 // Shared by the profile form and the server; keep this module free of server imports.
-export const profileLimits = { bio: 500, text: 2000, link: 500, social: 200 } as const;
+export const profileLimits = {
+  name: 128, institution: 200, phone: 40, category: 200,
+  bio: 500, text: 2000, applicationText: 600, link: 500, social: 200,
+} as const;
+
+// The live application form's labels, with its duplicate Research option removed.
+export const categoryOptions = [
+  'Research', 'Photography / Videography', 'Hardware / Electronics',
+  'Software / Coding', 'Arts / Design', 'Architecture', 'Other',
+] as const;
+
+export type ApplicationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended';
 
 export const socialPlatforms = ['github', 'instagram', 'linkedin', 'portfolio'] as const;
 export type SocialPlatform = typeof socialPlatforms[number];
@@ -80,6 +91,17 @@ const profileLink = (platform: keyof typeof profileSites) =>
   });
 
 export const profileFieldsSchema = z.object({
+  name: text(profileLimits.name),
+  institution: text(profileLimits.institution),
+  categories: z.array(z.enum(categoryOptions))
+    .max(categoryOptions.length, 'Choose from the listed categories.')
+    .transform((values): string[] => [...new Set(values)]),
+  otherCategory: text(profileLimits.category),
+  whatsapp: text(profileLimits.phone).refine((value) => {
+    if (!value) return true;
+    const digits = value.replace(/\D/g, '');
+    return /^\+?[\d\s().-]+$/.test(value) && digits.length >= 7 && digits.length <= 15;
+  }, 'Enter a phone number with its country code, like +1 555 000 0000.'),
   bio: text(profileLimits.bio),
   wtfIdea: text(profileLimits.text),
   currentProject: text(profileLimits.text),
@@ -104,17 +126,50 @@ export const profileFieldsSchema = z.object({
   }),
 });
 
+// Drafts may be incomplete. Only submitting an application requires these answers.
+export const applicationFieldsSchema = profileFieldsSchema.superRefine((fields, context) => {
+  const requiredFields = {
+    name: 'Add your name.',
+    institution: 'Add your institution name and location.',
+    whatsapp: 'Add your WhatsApp number so we can reach you.',
+    wtfIdea: 'Tell us what you want to explore, create, or build.',
+    currentProject: 'Tell us about something you have built or are building.',
+    youtubeLink: 'Share a video you find interesting.',
+    portfolio: 'Add a link to your portfolio or personal website.',
+  } as const;
+  for (const [field, message] of Object.entries(requiredFields)) {
+    if (!fields[field as keyof typeof requiredFields]) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message });
+    }
+  }
+  if (fields.categories.length === 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['categories'], message: 'Choose at least one thing you are into.' });
+  }
+  if (fields.categories.includes('Other') && !fields.otherCategory) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['otherCategory'], message: 'Tell us what else you are into.' });
+  }
+  for (const field of ['wtfIdea', 'currentProject'] as const) {
+    if (fields[field].length > profileLimits.applicationText) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `Keep your application answer to ${profileLimits.applicationText} characters or fewer.` });
+    }
+  }
+});
+
 export type ProfileFields = z.infer<typeof profileFieldsSchema>;
 export type ProfileField = keyof ProfileFields;
 
 export const profileFieldNames = Object.keys(profileFieldsSchema.shape) as ProfileField[];
 export const emptyProfileFields: ProfileFields = {
+  name: '', institution: '', categories: [], otherCategory: '', whatsapp: '',
   bio: '', wtfIdea: '', currentProject: '', youtubeLink: '',
   github: '', instagram: '', linkedin: '', portfolio: '',
 };
 
 export function profileFieldsFromFormData(formData: FormData): ProfileFields {
   return Object.fromEntries(profileFieldNames.map((name) => {
+    if (name === 'categories') {
+      return [name, formData.getAll(name).filter((value): value is string => typeof value === 'string')];
+    }
     const value = formData.get(name);
     return [name, typeof value === 'string' ? value : ''];
   })) as ProfileFields;
@@ -137,6 +192,8 @@ export interface ProfileFormState {
   status: 'idle' | 'saved' | 'invalid' | 'error';
   // The form re-renders from these after every submission, so rejected input is never lost.
   fields: ProfileFields;
+  applicationStatus?: ApplicationStatus;
+  memberNumber?: number | null;
   errors?: Partial<Record<ProfileField, string>>;
   message?: string;
 }

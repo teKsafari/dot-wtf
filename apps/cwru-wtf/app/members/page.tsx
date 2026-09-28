@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import SiteFooter from "@/components/site-footer"
 import SiteNav from "@/components/site-nav"
 import { tekidMembersPath, tekidProfilePath } from "@/lib/tekid/config"
-import { getMemberDirectory } from "@/lib/tekid/directory"
+import { getMemberDirectory } from "@/lib/member-directory"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 import MemberGrid from "./member-grid"
 
@@ -42,9 +42,8 @@ export default async function MembersPage() {
             <Button asChild><a href={`/api/tekid/sign-in?returnTo=${tekidMembersPath}`}>Sign in</a></Button>
           </Notice>
         ) : directory.status === "not-member" ? (
-          <Notice description="The member directory is open to CWRU.WTF members. Once an admin adds you, you’ll see everyone here.">
-            <Button asChild><Link href="/join">Apply to join</Link></Button>
-            <Button asChild variant="outline"><Link href={tekidProfilePath}>Your profile</Link></Button>
+          <Notice description="The directory opens once your application is approved. Complete your profile to apply, or check your application status there.">
+            <Button asChild><Link href={tekidProfilePath}>Your profile and application</Link></Button>
           </Notice>
         ) : (
           <>
