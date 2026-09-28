@@ -13,3 +13,11 @@ export interface DashboardMembersPage {
   page: number;
   hasMore: boolean;
 }
+
+// What any member may see about another member: never email or roles.
+export interface DirectoryMember {
+  id: string;
+  name: string | null;
+  picture: string | null;
+  bio: string;
+}
