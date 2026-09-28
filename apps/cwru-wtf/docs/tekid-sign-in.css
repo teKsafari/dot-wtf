@@ -194,7 +194,7 @@ div[data-logto-signature-container="secured"][class*="signature"] {
     pointer-events: none;
   }
   #app > div[class*="viewBox"]::after {
-    content: "We tinker\A fearlessly.";
+    content: "create beyond\A the possible";
     position: fixed;
     z-index: 2;
     left: 56px;
