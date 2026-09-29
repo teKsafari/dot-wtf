@@ -10,7 +10,7 @@ import type { AuthContextType } from '../lib/tekid/types';
 test('config keeps the public origin and requests email for the session contract', () => {
   const local = getTekidConfig(createApplicationEnv(testEnvironment));
   assert.equal(local.baseUrl, 'http://dot-wtf.localhost:1355');
-  assert.equal(local.endpoint, 'https://id.teksafari.org/');
+  assert.equal(local.endpoint, 'https://id.teksafari.com/');
   assert.equal(local.cookieSecure, false);
   assert.deepEqual(local.scopes, ['email']);
 
@@ -44,7 +44,7 @@ test('authenticated context projects only the application contract fields', () =
   const claims = {
     ...completeClaims,
     roles: ['Admin'],
-    iss: 'https://id.teksafari.org/oidc',
+    iss: 'https://id.teksafari.com/oidc',
     aud: 'test-app',
     exp: 1234567890,
     accessToken: 'private-access-token',
