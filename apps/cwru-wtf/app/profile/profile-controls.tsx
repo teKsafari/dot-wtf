@@ -205,7 +205,7 @@ async function saveProfileOrKeepInput(previous: ProfileFormState, formData: Form
       fields: profileFieldsFromFormData(formData),
       applicationStatus: previous.applicationStatus,
       memberNumber: previous.memberNumber,
-      message: "We couldn’t reach dot WTF. Your answers are still here. Check your connection and try again.",
+      message: "We couldn’t reach dot*WTF. Your answers are still here. Check your connection and try again.",
     }
   }
 }

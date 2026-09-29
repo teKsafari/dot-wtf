@@ -7,16 +7,16 @@ import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cwru.wtf"),
-  title: "dot WTF - We Tinker Fearlessly",
+  title: "dot*WTF - We Tinker Fearlessly",
   description: "A collective of students building the future (or just building cool stuff).",
   openGraph: {
-    title: "dot WTF - We Tinker Fearlessly",
+    title: "dot*WTF - We Tinker Fearlessly",
     description: "A collective of students building the future (or just building cool stuff).",
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: "dot WTF - We Tinker Fearlessly",
+    title: "dot*WTF - We Tinker Fearlessly",
     description: "A collective of students building the future (or just building cool stuff).",
   },
 }

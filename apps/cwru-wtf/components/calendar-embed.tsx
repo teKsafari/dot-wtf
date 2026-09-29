@@ -78,7 +78,7 @@ export default function CalendarEmbed() {
         <iframe
           key={mode}
           src={embedUrl(mode)}
-          title="dot WTF events calendar"
+          title="dot*WTF events calendar"
           onLoad={() => setIsLoading(false)}
           loading="lazy"
           className="block h-[70svh] min-h-[520px] w-full border-0"

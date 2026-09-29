@@ -11,7 +11,7 @@ import { TekidProfileContractError } from "@/lib/tekid/profile"
 import MemberGrid from "./member-grid"
 
 export const metadata: Metadata = {
-  title: "Members - dot WTF",
+  title: "Members - dot*WTF",
   robots: { index: false, follow: false },
 }
 
@@ -38,7 +38,7 @@ export default async function MembersPage() {
             <Button asChild><a href={tekidMembersPath}>Try again</a></Button>
           </Notice>
         ) : directory.status === "signed-out" ? (
-          <Notice description="Sign in with tekID to see who’s building at dot WTF.">
+          <Notice description="Sign in with tekID to see who’s building at dot*WTF.">
             <Button asChild><a href={`/api/tekid/sign-in?returnTo=${tekidMembersPath}`}>Sign in</a></Button>
           </Notice>
         ) : directory.status === "not-member" ? (

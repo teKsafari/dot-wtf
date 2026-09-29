@@ -42,7 +42,7 @@ export default async function AdminPage() {
     return (
       <AdminAccessMessage
         title="Dashboard access is required"
-        description="You’re signed in to tekID. Ask a dot WTF admin to grant you access to this dashboard."
+        description="You’re signed in to tekID. Ask a dot*WTF admin to grant you access to this dashboard."
       />
     );
   }
