@@ -1,30 +1,13 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { Calendar, Github, Instagram, LayoutDashboard, UserRound, Users } from "lucide-react"
+import { Calendar, LayoutDashboard, UserRound, Users } from "lucide-react"
 import { getDashboardAuthContext, AuthorizationError } from "@/lib/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
-
-const socialLinks = [
-  {
-    href: "https://github.com/teksafari/dot-wtf",
-    label: "dot*WTF on GitHub",
-    icon: Github,
-  },
-  {
-    href: "https://instagram.com/cwru.wtf",
-    label: "dot*WTF on Instagram",
-    icon: Instagram,
-  },
-]
 
 // Keep the chrome compact while preserving the buttons' 40px hit target.
 // The interaction follows the buttons: quiet colour feedback and a 1px press.
 const linkClassName =
   "focus-ring -my-2 inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:translate-y-px motion-reduce:transition-none"
-
-function Separator() {
-  return <li aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-}
 
 async function DashboardNavItem() {
   const auth = await getDashboardAuthContext().catch((error: unknown) => {
@@ -77,22 +60,6 @@ export default function SiteNav() {
         <Suspense fallback={null}>
           <DashboardNavItem />
         </Suspense>
-
-        <Separator />
-
-        {socialLinks.map(({ href, label, icon: Icon }) => (
-          <li key={href} className="inline-flex">
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={label}
-              className={linkClassName}
-            >
-              <Icon aria-hidden="true" className="h-4 w-4" />
-            </a>
-          </li>
-        ))}
       </ul>
     </nav>
   )
