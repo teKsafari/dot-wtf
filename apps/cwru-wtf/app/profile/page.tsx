@@ -121,7 +121,6 @@ export default async function ProfilePage({ searchParams }: {
             <form action={signInWithTekid} className="mt-7">
               <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in to get started</ProfileSubmitButton>
             </form>
-            <p className="mt-4 text-sm text-muted-foreground">New here? You can create a tekID account on the next screen.</p>
             {errorMessage ? <p role="alert" className="mt-5 text-sm text-destructive">{errorMessage}</p> : null}
           </section>
         )}
