@@ -102,7 +102,7 @@ html, body, #app, #app > div[class*="viewBox"] {
 }
 /* Both configured logos have the same paths. Use charcoal on the light canvas. */
 #app .logto_branding-header img[class*="logo"] {
-  width: 80px !important;
+  width: auto !important;
   height: 40px !important;
   object-fit: contain;
   filter: brightness(0);
