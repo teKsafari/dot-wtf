@@ -13,7 +13,7 @@ import { signInWithTekid, signOutFromTekid } from "./actions"
 import { ProfileAvatar, ProfileForm, ProfileSubmitButton } from "./profile-controls"
 
 export const metadata: Metadata = {
-  title: "Your profile - CWRU.WTF",
+  title: "Your profile - dot*WTF",
   robots: { index: false, follow: false },
 }
 
@@ -48,7 +48,7 @@ export default async function ProfilePage({ searchParams }: {
   return (
     <div className="flex min-h-[100svh] flex-col bg-background text-foreground">
       <header className="mx-auto flex w-full max-w-[1160px] items-center justify-between gap-5 px-6 py-6 sm:py-8">
-        <Link href="/" aria-label="CWRU.WTF home" className="focus-ring inline-flex min-h-11 items-center rounded-lg font-brand text-lg font-semibold">
+        <Link href="/" aria-label="dot*WTF home" className="focus-ring inline-flex min-h-11 items-center rounded-lg font-brand text-lg font-semibold">
           <Wordmark />
         </Link>
         <Link href="/" className={secondaryLinkClassName}>Back home</Link>
@@ -117,7 +117,7 @@ export default async function ProfilePage({ searchParams }: {
           <section aria-labelledby="profile-heading" className="w-full py-12 text-center">
             <DeskCat className="mx-auto mb-9 w-44 text-foreground/80" />
             <h1 id="profile-heading" className="font-brand text-page-title">Make yourself at home.</h1>
-            <p className="mx-auto mt-4 max-w-sm text-body text-muted-foreground">Create your profile, tell us what you want to build, and apply to join dot wtf.</p>
+            <p className="mx-auto mt-4 max-w-sm text-body text-muted-foreground">Create your profile, tell us what you want to build, and apply to join dot*WTF.</p>
             <form action={signInWithTekid} className="mt-7">
               <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in to get started</ProfileSubmitButton>
             </form>

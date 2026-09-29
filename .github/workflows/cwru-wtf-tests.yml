@@ -1,4 +1,4 @@
-name: CWRU.WTF tests
+name: dot*WTF tests
 
 on:
   pull_request:

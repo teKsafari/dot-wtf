@@ -350,7 +350,7 @@ export default function AdminDashboard({
         <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
-            aria-label="Back to CWRU.WTF home"
+            aria-label="Back to dot*WTF home"
             className="focus-ring inline-flex min-h-11 items-center gap-3 rounded text-foreground"
           >
             <span translate="no" className="font-brand text-base font-semibold">

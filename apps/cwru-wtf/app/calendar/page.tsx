@@ -12,8 +12,8 @@ const subscribeUrl = `https://calendar.google.com/calendar/render?cid=${encodeUR
 const icalUrl = `https://calendar.google.com/calendar/ical/${encodeURIComponent(CALENDAR_ID)}/public/basic.ics`
 
 export const metadata: Metadata = {
-  title: "Calendar - CWRU.WTF",
-  description: "Everything CWRU.WTF is running.",
+  title: "Calendar - dot*WTF",
+  description: "Everything dot*WTF is running.",
 }
 
 export default function CalendarPage() {

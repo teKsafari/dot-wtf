@@ -26,7 +26,7 @@ export default function Home() {
         <WtfMeanings />
 
         <p className="mt-6 max-w-[52ch] text-pretty font-primary text-body text-muted-foreground md:text-lg">
-          A student-led collective of{" "}
+          A collective of{" "}
           <span className="vibe text-foreground">builders</span>,{" "}
            <span className="vibe text-foreground">researchers</span>,{" "}
           <span className="vibe text-foreground">tinkerers</span>,{" "}
