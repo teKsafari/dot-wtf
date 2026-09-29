@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Orbit">
+  <title>Orbit</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="87.1" cy="76.8" r="62.8"/>
+    <circle cx="131.8" cy="160.9" r="25.1"/>
+    <circle cx="160" cy="121.9" r="15.7"/>
+  </g>
+  <circle cx="165.5" cy="89.9" r="9.4" fill="#1e3a8a"/>
+</svg>

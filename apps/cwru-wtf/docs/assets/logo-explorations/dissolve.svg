@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Dissolve">
+  <title>Dissolve</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="76.7" cy="83.4" r="62.7"/>
+    <circle cx="151" cy="65" r="3"/>
+    <circle cx="161.6" cy="83.4" r="4.8"/>
+    <circle cx="151" cy="101.7" r="7"/>
+    <circle cx="172.3" cy="101.7" r="4.2"/>
+    <circle cx="140.4" cy="120.1" r="7.2"/>
+    <circle cx="161.6" cy="120.1" r="5.5"/>
+    <circle cx="182.9" cy="120.1" r="3.1"/>
+    <circle cx="129.8" cy="138.5" r="7.4"/>
+    <circle cx="172.3" cy="138.5" r="3.9"/>
+    <circle cx="76.7" cy="156.9" r="5.5"/>
+    <circle cx="97.9" cy="156.9" r="6.7"/>
+    <circle cx="119.2" cy="156.9" r="6.2"/>
+    <circle cx="140.4" cy="156.9" r="5.2"/>
+    <circle cx="161.6" cy="156.9" r="3.8"/>
+    <circle cx="87.3" cy="175.3" r="2.7"/>
+    <circle cx="108.5" cy="175.3" r="4"/>
+    <circle cx="129.8" cy="175.3" r="3.9"/>
+    <circle cx="151" cy="175.3" r="3"/>
+  </g>
+  <circle cx="151" cy="138.5" r="5.7" fill="#ff5b1f"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Crescendo">
+  <title>Crescendo</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="52" cy="119" r="12.3"/>
+    <circle cx="93.9" cy="111.7" r="19.5"/>
+    <circle cx="154.7" cy="100" r="31.3"/>
+  </g>
+  <circle cx="21.8" cy="123.5" r="7.8" fill="#ff5b1f"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Collective, 7 dots">
+  <title>Collective, 7 dots</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="100.8" cy="83.6" r="46.1"/>
+    <circle cx="107.5" cy="159.8" r="26.2"/>
+    <circle cx="45" cy="126.2" r="19.9"/>
+    <circle cx="160.2" cy="109.9" r="14.7"/>
+    <circle cx="127.5" cy="26.6" r="12.6"/>
+    <circle cx="41.6" cy="69.7" r="10.5"/>
+  </g>
+  <circle cx="142.7" cy="43.9" r="7.3" fill="#ff5b1f"/>
+</svg>
