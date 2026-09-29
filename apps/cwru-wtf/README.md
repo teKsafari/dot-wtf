@@ -60,7 +60,7 @@ Register these exact URLs in that application:
 | Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/profile` |
 | Production | `https://cwru.wtf/api/tekid/callback` | `https://cwru.wtf/profile` |
 
-Set `LOGTO_BASE_URL=https://cwru.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.org/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
+Set `LOGTO_BASE_URL=https://cwru.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.com/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
 
 For Vercel Preview deployments, set the required application credentials (`LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET`) for **all Preview branches**, along with the database setting. Management API credentials and organization role IDs are not runtime configuration. A value scoped to one branch does not configure future branches. Keep the cookie secret consistent across deployments of a branch so existing sessions remain readable.
 
