@@ -85,6 +85,27 @@
       "when": 1790627633579,
       "tag": "0011_local_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790636223520,
+      "tag": "0012_split_member_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790638558934,
+      "tag": "0013_approve_ignas_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790639846670,
+      "tag": "0014_member_zero",
+      "breakpoints": true
     }
   ]
 }

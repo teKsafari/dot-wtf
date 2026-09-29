@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import * as schema from '../lib/schema';
-import { memberAuditLogs, memberProfiles, submissions } from '../lib/schema';
+import { memberAuditLogs, memberships, profiles as profileRecords, submissions, users } from '../lib/schema';
 import { createProfileStore, importedProfileFields, ProfileSubmissionError } from '../lib/member-profiles';
 import { emptyProfileFields, profileFieldsSchema, profileLimits, type ProfileFields } from '../lib/member-profile-fields';
 import type { AuthSession } from '../lib/tekid/types';
@@ -44,9 +44,26 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
   const database = drizzle(client, { schema });
   const profiles = createProfileStore(database);
   async function readProfile(userId = 'ada') {
-    const [row] = await database.select().from(memberProfiles).where(eq(memberProfiles.tekidUserId, userId));
+    const [row] = await database.select({ user: users, profile: profileRecords, membership: memberships })
+      .from(users).innerJoin(profileRecords, eq(profileRecords.userId, users.id))
+      .innerJoin(memberships, eq(memberships.userId, users.id)).where(eq(users.tekidUserId, userId));
     assert.ok(row, `Expected a profile for ${userId}`);
-    return row;
+    return { ...row.user, ...row.profile, ...row.membership, userId: row.user.id, membershipId: row.membership.id };
+  }
+  async function insertProfile(
+    identity: typeof users.$inferInsert,
+    profile: Omit<typeof profileRecords.$inferInsert, 'userId'>,
+    membership: Omit<typeof memberships.$inferInsert, 'userId'>,
+  ) {
+    return database.transaction(async (tx) => {
+      const [user] = await tx.insert(users).values(identity).returning();
+      await tx.insert(profileRecords).values({ ...profile, userId: user.id });
+      await tx.insert(memberships).values({ ...membership, userId: user.id });
+    });
+  }
+  async function updateMembership(values: Partial<typeof memberships.$inferInsert>, tekidUserId = 'ada') {
+    const { userId } = await readProfile(tekidUserId);
+    await database.update(memberships).set(values).where(eq(memberships.userId, userId));
   }
   const audits = () => database.select().from(memberAuditLogs).where(eq(memberAuditLogs.action, 'profile.submitted'));
 
@@ -58,10 +75,11 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
   after(async () => { await client.end(); });
   beforeEach(async () => {
     // Supply a separate database per integration suite to avoid shared-table resets.
-    await client`TRUNCATE TABLE member_profiles, member_audit_logs, action_logs, submissions RESTART IDENTITY`;
+    await client`TRUNCATE TABLE users, profiles, memberships, member_audit_logs, action_logs, submissions RESTART IDENTITY`;
   });
 
   it('first sign-in creates only a draft even when identity claims advertise elevated roles', async () => {
+    const [sequenceBefore] = await client`SELECT last_value::text, is_called FROM member_number_seq`;
     const identity = Object.assign(claims(), { roles: ['admin'], organization_roles: ['instance-lead'] });
     const view = await profiles.getProfile(identity);
     const row = await readProfile();
@@ -75,7 +93,27 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
     assert.equal(row.picture, identity.picture);
     assert.equal(row.role, 'member');
     assert.equal(row.approvedAt, null);
+    assert.match(row.userId, /^[0-9a-f-]{36}$/);
+    assert.match(row.membershipId, /^[0-9a-f-]{36}$/);
+    assert.notEqual(row.userId, row.membershipId);
+    assert.notEqual(row.userId, identity.sub);
+    const [sequenceAfter] = await client`SELECT last_value::text, is_called FROM member_number_seq`;
+    assert.deepEqual(sequenceAfter, sequenceBefore);
     assert.equal((await audits()).length, 0);
+  });
+
+  it('separate authenticated subjects sharing an email keep distinct local profiles and memberships', async () => {
+    await profiles.saveProfile(claims(), completeFields({ name: 'Ada', bio: 'First profile' }));
+    await profiles.saveProfile(claims({ sub: 'another-ada' }), completeFields({ name: 'Another Ada', bio: 'Second profile' }), 'submit');
+    const first = await readProfile();
+    const second = await readProfile('another-ada');
+    assert.notEqual(first.userId, second.userId);
+    assert.notEqual(first.membershipId, second.membershipId);
+    assert.equal(first.bio, 'First profile');
+    assert.equal(first.status, 'draft');
+    assert.equal(second.bio, 'Second profile');
+    assert.equal(second.status, 'pending');
+    assert.equal((await audits())[0].targetId, 'another-ada');
   });
 
   it('identity refresh preserves every local status, role, member number, edited name, and review decision', async () => {
@@ -83,11 +121,12 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
     const submittedAt = new Date('2026-08-30T12:00:00Z');
     for (const [index, status] of (['draft', 'pending', 'approved', 'rejected', 'suspended'] as const).entries()) {
       const id = `member-${status}`;
-      await database.insert(memberProfiles).values({
-        tekidUserId: id, email: 'before@example.org', emailVerified: true, name: 'My local name',
-        status, role: 'admin', memberNumber: index + 1, approvedAt, submittedAt,
-        reviewedBy: 'reviewer', reviewedAt: approvedAt, bio: 'My local bio', picture: 'https://images.example.org/old.png',
-      });
+      await insertProfile(
+        { tekidUserId: id, email: 'before@example.org', emailVerified: true },
+        { name: 'My local name', bio: 'My local bio', picture: 'https://images.example.org/old.png' },
+        { status, role: 'admin', memberNumber: index + 1, approvedAt, submittedAt, reviewedBy: 'reviewer', reviewedAt: approvedAt },
+      );
+      const before = await readProfile(id);
       const view = await profiles.getProfile(claims({ sub: id, name: 'Different identity name', email: 'new@example.org', email_verified: false }));
       const row = await readProfile(id);
       assert.equal(view.status, status);
@@ -102,6 +141,9 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
       assert.deepEqual(row.submittedAt, submittedAt);
       assert.equal(row.reviewedBy, 'reviewer');
       assert.deepEqual(row.reviewedAt, approvedAt);
+      assert.equal(row.userId, before.userId);
+      assert.equal(row.membershipId, before.membershipId);
+      assert.deepEqual(row.updatedAt, before.updatedAt);
     }
   });
 
@@ -208,12 +250,12 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
   it('pre-migration profiles retain every stored answer and access decision while legacy fields are hydrated', async () => {
     await database.insert(submissions).values(legacyApplication);
     const approvedAt = new Date('2026-08-01T12:00:00Z');
-    await database.insert(memberProfiles).values({
-      tekidUserId: 'ada', email: '', name: 'Already edited', bio: 'Local bio', wtfIdea: '',
-      currentProject: 'Local project', youtubeLink: 'https://youtu.be/local',
-      socialLinks: { github: 'https://github.com/ada', portfolio: 'https://local.example.org/' },
-      status: 'suspended', role: 'instance-lead', memberNumber: 17, approvedAt,
-    });
+    await insertProfile(
+      { tekidUserId: 'ada', email: '' },
+      { name: 'Already edited', bio: 'Local bio', wtfIdea: '', currentProject: 'Local project', youtubeLink: 'https://youtu.be/local',
+        socialLinks: { github: 'https://github.com/ada', portfolio: 'https://local.example.org/' } },
+      { status: 'suspended', role: 'instance-lead', memberNumber: 17, approvedAt },
+    );
     const view = await profiles.getProfile(claims());
     assert.equal(view.fields.name, 'Already edited');
     assert.equal(view.fields.bio, 'Local bio');
@@ -258,7 +300,9 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
 
   it('unverified submission is rejected without creating a profile or audit', async () => {
     await assert.rejects(profiles.saveProfile(claims({ email_verified: false }), completeFields(), 'submit'), ProfileSubmissionError);
-    assert.deepEqual(await database.select().from(memberProfiles), []);
+    assert.deepEqual(await database.select().from(users), []);
+    assert.deepEqual(await database.select().from(profileRecords), []);
+    assert.deepEqual(await database.select().from(memberships), []);
     assert.deepEqual(await audits(), []);
   });
 
@@ -273,7 +317,7 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
 
   it('suspended members can save fields but cannot submit or alter access', async () => {
     await profiles.saveProfile(claims(), completeFields());
-    await database.update(memberProfiles).set({ status: 'suspended', role: 'instance-lead', memberNumber: 24 }).where(eq(memberProfiles.tekidUserId, 'ada'));
+    await updateMembership({ status: 'suspended', role: 'instance-lead', memberNumber: 24 });
     const before = await readProfile();
     await assert.rejects(profiles.saveProfile(claims({ email: 'new@example.org' }), completeFields({ bio: 'Should roll back' }), 'submit'), ProfileSubmissionError);
     assert.deepEqual(await readProfile(), before);
@@ -288,8 +332,9 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
   it('approved edits retain approval, elevated role, review metadata, and member number', async () => {
     await profiles.saveProfile(claims(), completeFields(), 'submit');
     const approvedAt = new Date('2026-09-20T12:00:00Z');
-    await database.update(memberProfiles).set({ status: 'approved', role: 'admin', memberNumber: 42, approvedAt, reviewedAt: approvedAt, reviewedBy: 'another-admin' }).where(eq(memberProfiles.tekidUserId, 'ada'));
+    await updateMembership({ status: 'approved', role: 'admin', memberNumber: 42, approvedAt, reviewedAt: approvedAt, reviewedBy: 'another-admin' });
     const before = await readProfile();
+    const membershipBefore = await database.select().from(memberships).where(eq(memberships.userId, before.userId));
     for (const intent of ['save', 'submit'] as const) {
       const view = await profiles.saveProfile(claims(), completeFields({ bio: `Edited with ${intent}`, github: '@ada' }), intent);
       const row = await readProfile();
@@ -301,14 +346,16 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
       assert.deepEqual(row.submittedAt, before.submittedAt);
       assert.deepEqual(row.reviewedAt, approvedAt);
       assert.equal(row.reviewedBy, 'another-admin');
+      assert.deepEqual(await database.select().from(memberships).where(eq(memberships.userId, before.userId)), membershipBefore);
     }
     assert.equal((await audits()).length, 1);
   });
 
   it('rejected members resubmit without choosing their identity, role, or number', async () => {
     await profiles.saveProfile(claims(), completeFields());
-    await database.update(memberProfiles).set({ status: 'rejected' }).where(eq(memberProfiles.tekidUserId, 'ada'));
-    const forged = Object.assign(completeFields(), { status: 'approved', role: 'admin', memberNumber: 1, tekidUserId: 'another-user', email: 'someone-else@example.org' });
+    await updateMembership({ status: 'rejected' });
+    const forged = Object.assign(completeFields(), { status: 'approved', role: 'admin', memberNumber: 1, tekidUserId: 'another-user',
+      userId: '00000000-0000-0000-0000-000000000001', membershipId: '00000000-0000-0000-0000-000000000002', email: 'someone-else@example.org' });
     const view = await profiles.saveProfile(claims(), forged, 'submit');
     const row = await readProfile();
     assert.equal(view.status, 'pending');
@@ -316,7 +363,9 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
     assert.equal(row.memberNumber, null);
     assert.equal(row.email, claims().email);
     assert.equal(row.tekidUserId, claims().sub);
-    assert.equal((await database.select().from(memberProfiles)).length, 1);
+    assert.equal((await database.select().from(users)).length, 1);
+    assert.equal((await database.select().from(profileRecords)).length, 1);
+    assert.equal((await database.select().from(memberships)).length, 1);
     assert.deepEqual((await audits())[0].details, { previousStatus: 'rejected' });
   });
 
@@ -324,7 +373,9 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
     await database.insert(submissions).values(legacyApplication);
     const views = await Promise.all([profiles.getProfile(claims()), profiles.getProfile(claims()), profiles.getProfile(claims())]);
     assert.equal(views.filter((view) => view.imported).length, 1);
-    assert.equal((await database.select().from(memberProfiles)).length, 1);
+    assert.equal((await database.select().from(users)).length, 1);
+    assert.equal((await database.select().from(profileRecords)).length, 1);
+    assert.equal((await database.select().from(memberships)).length, 1);
     const saved = await Promise.all([
       profiles.saveProfile(claims(), completeFields({ bio: 'One tab' }), 'submit'),
       profiles.saveProfile(claims(), completeFields({ bio: 'Another tab' }), 'submit'),

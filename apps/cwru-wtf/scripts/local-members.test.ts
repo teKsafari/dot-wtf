@@ -56,7 +56,7 @@ const record = (id: string, overrides: Partial<DirectoryRecord> = {}): Directory
 
 test('directory permits only approved local members and projects only public fields', async () => {
   let rows = [
-    { ...record('ada'), email: 'private@example.org', wtfIdea: 'private', role: 'admin' },
+    { ...record('ada'), email: 'private@example.org', wtfIdea: 'private', role: 'admin', userId: 'local-user-uuid', membershipId: 'local-membership-uuid' },
     record('grace', { memberNumber: 2, picture: 'javascript:alert(1)', socialLinks: { github: 'grace', portfolio: 'javascript:alert(1)' } }),
     record('suspended', { status: 'suspended' }),
     record('pending', { status: 'pending' }),
@@ -75,6 +75,19 @@ test('directory permits only approved local members and projects only public fie
     loadMembers: async () => { throw new Error('must not query'); },
   })(), { status: 'signed-out' });
   await assert.rejects(createMemberDirectory({ getAuthContext: async () => auth, loadMembers: async () => { throw new Error('unavailable'); } })());
+});
+
+test('directory preserves member number zero and sorts it before positive or missing numbers', async () => {
+  const directory = await createMemberDirectory({
+    getAuthContext: async () => auth,
+    loadMembers: async () => [record('unnumbered', { memberNumber: null }), record('ada'), record('zero', { memberNumber: 0 })],
+  })();
+  assert.equal(directory.status, 'member');
+  if (directory.status === 'member') {
+    assert.deepEqual(directory.members.map(({ id, memberNumber }) => ({ id, memberNumber })), [
+      { id: 'zero', memberNumber: 0 }, { id: 'ada', memberNumber: 1 }, { id: 'unnumbered', memberNumber: null },
+    ]);
+  }
 });
 
 test('signed-out member mutations never enter a transaction', async () => {

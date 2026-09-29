@@ -3,7 +3,7 @@ import 'server-only';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from './schema';
-import { memberAuditLogs, memberProfiles, submissions } from './schema';
+import { memberAuditLogs, memberships, profiles, submissions, users } from './schema';
 import type { AuthSession } from './tekid/types';
 import {
   applicationFieldsSchema, categoryOptions, emptyProfileFields, profileFieldsSchema,
@@ -13,14 +13,16 @@ import {
 
 export type ProfileDatabase = PostgresJsDatabase<typeof schema>;
 type ProfileTransaction = Parameters<Parameters<ProfileDatabase['transaction']>[0]>[0];
-type ProfileRow = typeof memberProfiles.$inferSelect;
+type ProfileRow = typeof profiles.$inferSelect;
+type MembershipRow = typeof memberships.$inferSelect;
+type ProfileRecord = { profile: ProfileRow; membership: MembershipRow };
 type LegacyApplication = Pick<typeof submissions.$inferSelect,
   'name' | 'categories' | 'otherCategory' | 'whatsapp' | 'wtfIdea' | 'currentProject' | 'youtubeLink'>;
 
 export interface MemberProfileView {
   fields: ProfileFields;
   imported: boolean;
-  status: ProfileRow['status'];
+  status: MembershipRow['status'];
   memberNumber: number | null;
   submittedAt: string | null;
 }
@@ -74,28 +76,38 @@ export function profileFieldsToRow({ github, instagram, linkedin, portfolio, ...
   return { ...fields, socialLinks };
 }
 
-function profileView(row: ProfileRow, imported = false): MemberProfileView {
+function profileView({ profile, membership }: ProfileRecord, imported = false): MemberProfileView {
   return {
-    fields: profileFieldsFromRow(row), imported, status: row.status,
-    memberNumber: row.memberNumber, submittedAt: row.submittedAt?.toISOString() ?? null,
+    fields: profileFieldsFromRow(profile), imported, status: membership.status,
+    memberNumber: membership.memberNumber, submittedAt: membership.submittedAt?.toISOString() ?? null,
   };
 }
 
 // Injecting the database lets integration tests exercise the actual transactions.
 export function createProfileStore(database: ProfileDatabase) {
   async function initializeProfile(tx: ProfileTransaction, claims: AuthSession) {
-    const [saved] = await tx.select().from(memberProfiles).where(eq(memberProfiles.tekidUserId, claims.sub)).for('update');
-    const identity = { email: claims.email, emailVerified: claims.email_verified, picture: safePicture(claims.picture) };
+    const [saved] = await tx.select({ user: users, profile: profiles, membership: memberships })
+      .from(users).leftJoin(profiles, eq(profiles.userId, users.id))
+      .leftJoin(memberships, eq(memberships.userId, users.id))
+      .where(eq(users.tekidUserId, claims.sub)).for('update', { of: users });
+    const identity = { email: claims.email, emailVerified: claims.email_verified };
+    const now = new Date();
+    const [user] = saved
+      ? await tx.update(users).set({ ...identity, updatedAt: now }).where(eq(users.id, saved.user.id)).returning()
+      : await tx.insert(users).values({ tekidUserId: claims.sub, ...identity }).returning();
+    const membership = saved?.membership ?? (await tx.insert(memberships).values({ userId: user.id }).returning())[0];
+    const savedProfile = saved?.profile;
+    const picture = safePicture(claims.picture);
     // Pre-migration rows have no email. Hydrate newly added application fields once,
     // without overwriting existing profile answers or any local access decision.
-    const firstVerifiedVisit = Boolean(saved?.email && !saved.emailVerified && claims.email_verified);
+    const firstVerifiedVisit = Boolean(saved?.user.email && !saved.user.emailVerified && claims.email_verified);
     const [previousImport] = firstVerifiedVisit ? await tx.select({ id: memberAuditLogs.id })
       .from(memberAuditLogs).where(and(eq(memberAuditLogs.targetId, claims.sub),
         eq(memberAuditLogs.action, 'profile.legacy-imported'))).limit(1) : [];
-    if (saved?.email && (!firstVerifiedVisit || previousImport)) {
-      const [row] = await tx.update(memberProfiles).set(identity)
-        .where(eq(memberProfiles.tekidUserId, claims.sub)).returning();
-      return { row, imported: false };
+    if (savedProfile && saved.user.email && (!firstVerifiedVisit || previousImport)) {
+      const [profile] = await tx.update(profiles).set({ picture, updatedAt: now })
+        .where(eq(profiles.userId, user.id)).returning();
+      return { row: { profile, membership }, imported: false };
     }
     const [application] = claims.email_verified
       ? await tx.select().from(submissions)
@@ -103,29 +115,29 @@ export function createProfileStore(database: ProfileDatabase) {
         .orderBy(desc(submissions.createdAt), desc(submissions.id)).limit(1)
       : [];
     const importedFields = application ? importedProfileFields(application) : { ...emptyProfileFields, name: claims.name };
-    const fields: ProfileFields = saved ? {
-      ...importedFields, ...profileFieldsFromRow(saved), name: saved.name || importedFields.name || claims.name,
-      categories: saved.categories.length ? saved.categories : importedFields.categories,
-      otherCategory: saved.otherCategory || importedFields.otherCategory,
-      whatsapp: saved.whatsapp || importedFields.whatsapp,
+    const fields: ProfileFields = savedProfile ? {
+      ...importedFields, ...profileFieldsFromRow(savedProfile), name: savedProfile.name || importedFields.name || claims.name,
+      categories: savedProfile.categories.length ? savedProfile.categories : importedFields.categories,
+      otherCategory: savedProfile.otherCategory || importedFields.otherCategory,
+      whatsapp: savedProfile.whatsapp || importedFields.whatsapp,
     } : { ...importedFields, name: importedFields.name || claims.name };
     // A first unverified sign-in cannot import by email. When verification arrives,
     // fill only still-empty answers; keep every answer already saved by the user.
-    if (saved && firstVerifiedVisit && application) {
-      const existing = profileFieldsFromRow(saved);
+    if (savedProfile && firstVerifiedVisit && application) {
+      const existing = profileFieldsFromRow(savedProfile);
       for (const field of ['name', 'otherCategory', 'whatsapp', 'wtfIdea', 'currentProject', 'youtubeLink'] as const) {
         fields[field] = existing[field] || importedFields[field];
       }
     }
-    const values = { ...profileFieldsToRow(fields), ...identity };
-    const [row] = saved
-      ? await tx.update(memberProfiles).set(values).where(eq(memberProfiles.tekidUserId, claims.sub)).returning()
-      : await tx.insert(memberProfiles).values({ tekidUserId: claims.sub, ...values }).returning();
+    const values = { ...profileFieldsToRow(fields), picture };
+    const [profile] = savedProfile
+      ? await tx.update(profiles).set({ ...values, updatedAt: now }).where(eq(profiles.userId, user.id)).returning()
+      : await tx.insert(profiles).values({ userId: user.id, ...values }).returning();
     if (claims.email_verified) await tx.insert(memberAuditLogs).values({
       actorId: claims.sub, targetId: claims.sub, action: 'profile.legacy-imported',
       details: { applicationFound: Boolean(application) },
     });
-    return { row, imported: Boolean(application) };
+    return { row: { profile, membership }, imported: Boolean(application) };
   }
 
   async function getProfile(claims: AuthSession): Promise<MemberProfileView> {
@@ -144,18 +156,21 @@ export function createProfileStore(database: ProfileDatabase) {
     return database.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('dot-wtf:membership', 0))`);
       const { row: current } = await initializeProfile(tx, claims);
-      if (intent === 'submit' && current.status === 'suspended') {
+      if (intent === 'submit' && current.membership.status === 'suspended') {
         throw new ProfileSubmissionError('Your membership is suspended. Contact an admin before applying again.');
       }
-      const isNewSubmission = intent === 'submit' && (current.status === 'draft' || current.status === 'rejected');
-      const [row] = await tx.update(memberProfiles).set({
-        ...profileFieldsToRow(fields), updatedAt: new Date(),
-        ...(isNewSubmission ? { status: 'pending' as const, submittedAt: new Date() } : {}),
-      }).where(eq(memberProfiles.tekidUserId, claims.sub)).returning();
+      const isNewSubmission = intent === 'submit' && (current.membership.status === 'draft' || current.membership.status === 'rejected');
+      const now = new Date();
+      const [profile] = await tx.update(profiles).set({ ...profileFieldsToRow(fields), updatedAt: now })
+        .where(eq(profiles.userId, current.profile.userId)).returning();
+      const membership = isNewSubmission
+        ? (await tx.update(memberships).set({ status: 'pending', submittedAt: now, updatedAt: now })
+          .where(eq(memberships.userId, current.profile.userId)).returning())[0]
+        : current.membership;
       if (isNewSubmission) await tx.insert(memberAuditLogs).values({
-        actorId: claims.sub, targetId: claims.sub, action: 'profile.submitted', details: { previousStatus: current.status },
+        actorId: claims.sub, targetId: claims.sub, action: 'profile.submitted', details: { previousStatus: current.membership.status },
       });
-      return profileView(row);
+      return profileView({ profile, membership });
     });
   }
   return { getProfile, saveProfile };
