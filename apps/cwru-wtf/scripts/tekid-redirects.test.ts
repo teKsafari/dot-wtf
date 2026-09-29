@@ -11,8 +11,8 @@ test('sign-in supports only the profile, members, and dashboard destinations', (
   for (const destination of [
     undefined, null, '', ['/admin'], '/admin?role=admin', '/api/admin/members',
     'https://example.com', '//example.com', '/\\example.com', '/%2fexample.com',
-    '/profile/../admin', '/admin#fragment', 'https://cwru.wtf/admin',
-    '/members/', '/members?member=1', 'https://cwru.wtf/members',
+    '/profile/../admin', '/admin#fragment', 'https://dott.wtf/admin',
+    '/members/', '/members?member=1', 'https://dott.wtf/members',
   ]) {
     assert.equal(getTekidReturnPath(destination), '/profile');
   }

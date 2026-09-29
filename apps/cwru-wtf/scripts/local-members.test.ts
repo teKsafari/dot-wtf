@@ -100,7 +100,7 @@ test('signed-out member mutations never enter a transaction', async () => {
 });
 
 test('member input requires bounded valid JSON and same-origin mutations', async () => {
-  const origin = 'https://cwru.wtf';
+  const origin = 'https://dott.wtf';
   assertSameOriginMutation(new Request(`${origin}/api/admin/members/ada`, { headers: { origin } }), origin);
   for (const source of [undefined, 'https://attacker.example', 'null']) {
     assert.throws(() => assertSameOriginMutation(new Request(`${origin}/api/admin/members/ada`, {

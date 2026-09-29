@@ -266,7 +266,7 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
             <Input id={`${id}-email`} value={email} readOnly type="email" autoComplete="email" aria-describedby={`${id}-email-hint`} className="mt-3 bg-muted/60" />
             <p id={`${id}-email-hint`} className="mt-2 text-sm text-muted-foreground">Your sign-in email. {emailVerified ? "Verified with tekID." : "Verify it in tekID before submitting your application."}</p>
             {!emailVerified ? (
-              <a href="https://id.teksafari.org/account/security" target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in tekID</a>
+              <a href="https://id.teksafari.com/account/security" target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in tekID</a>
             ) : null}
           </div>
           {detailFields.slice(1).map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
