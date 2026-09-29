@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio",
     "create-admin": "node --conditions=react-server --import tsx scripts/create-admin.ts",
     "import:logto-members": "node --conditions=react-server --import tsx scripts/import-logto-members.ts",
+    "sync:logto-branding": "node --conditions=react-server --import tsx scripts/sync-logto-branding.ts",
     "migrate-database": "node scripts/run-migrate-database.js",
     "tally:export": "tsx scripts/export-tally-migration.ts",
     "test:tally": "tsx --test scripts/tally-webhook.test.ts",
