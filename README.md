@@ -1,6 +1,6 @@
 # Homebase
 
-Homebase is the monorepo behind dot\*WTF, a student-led collective for people who build bold, weird, useful things. The site is served at [cwru.wtf](https://cwru.wtf) for now.
+Homebase is the monorepo behind dot\*WTF, a student-led collective for people who build bold, weird, useful things. The site is served at [dott.wtf](https://dott.wtf).
 
 The spirit is simple: less talking, more shipping. Projects span hardware, software, games, art, AI, and experiments that feel a little impossible until someone builds them.
 

@@ -17,9 +17,9 @@ test('config keeps the public origin and requests email for the session contract
   const production = getTekidConfig(createApplicationEnv({
     ...testEnvironment,
     NODE_ENV: 'production',
-    LOGTO_BASE_URL: 'https://cwru.wtf/',
+    LOGTO_BASE_URL: 'https://dott.wtf/',
   }));
-  assert.equal(production.baseUrl, 'https://cwru.wtf');
+  assert.equal(production.baseUrl, 'https://dott.wtf');
   assert.equal(production.cookieSecure, true);
 });
 

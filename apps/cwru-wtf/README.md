@@ -2,7 +2,7 @@
 
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 
-> A student-led collective for builders, tinkerers, and dreamers. The site is served at [cwru.wtf](https://cwru.wtf) for now.
+> A student-led collective for builders, tinkerers, and dreamers. The site is served at [dott.wtf](https://dott.wtf).
 
 ## What is dot\*WTF?
 
@@ -45,7 +45,7 @@ Open [http://dot-wtf.localhost:1355](http://dot-wtf.localhost:1355). Portless ma
 
 Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` and the four `LOGTO_*` sign-in values before starting or building. [`env.ts`](env.ts) exposes the typed configuration, validated with `@t3-oss/env-core` and Zod. Application code imports `env` instead of reading `process.env`; the schema lives in [`lib/env-schema.ts`](lib/env-schema.ts). Next.js loads `.env` files, and CLI entry points that import application modules use `scripts/load-env.ts`. The environment module does not load files.
 
-`next.config.mjs` imports the validation before development, build, and server startup, so invalid required settings stop the command with the variable names. Tally settings are optional legacy configuration; both former intake endpoints return 410 and current applications are submitted through `/profile`. Turbo forwards and hashes the required Logto variables for builds. `LOGTO_BASE_URL` is the application's HTTP(S) origin and must use HTTPS for a production build. To verify a production build locally, run `LOGTO_BASE_URL=https://cwru.wtf pnpm build`; keep the local `.env.local` origin set to Portless for development.
+`next.config.mjs` imports the validation before development, build, and server startup, so invalid required settings stop the command with the variable names. Tally settings are optional legacy configuration; both former intake endpoints return 410 and current applications are submitted through `/profile`. Turbo forwards and hashes the required Logto variables for builds. `LOGTO_BASE_URL` is the application's HTTP(S) origin and must use HTTPS for a production build. To verify a production build locally, run `LOGTO_BASE_URL=https://dott.wtf pnpm build`; keep the local `.env.local` origin set to Portless for development.
 
 ## tekID profiles
 
@@ -58,9 +58,9 @@ Register these exact URLs in that application:
 | Environment | Redirect URI | Post sign-out redirect URI |
 | --- | --- | --- |
 | Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/profile` |
-| Production | `https://cwru.wtf/api/tekid/callback` | `https://cwru.wtf/profile` |
+| Production | `https://dott.wtf/api/tekid/callback` | `https://dott.wtf/profile` |
 
-Set `LOGTO_BASE_URL=https://cwru.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.com/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
+Set `LOGTO_BASE_URL=https://dott.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.com/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
 
 For Vercel Preview deployments, set the required application credentials (`LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET`) for **all Preview branches**, along with the database setting. Management API credentials and organization role IDs are not runtime configuration. A value scoped to one branch does not configure future branches. Keep the cookie secret consistent across deployments of a branch so existing sessions remain readable.
 
@@ -74,9 +74,9 @@ The callback reconstructs its public URL from `LOGTO_BASE_URL` so it works behin
 
 An authenticated session with missing or malformed required claims raises `TekidProfileContractError` instead of inventing profile values or reporting the user as signed out. `/profile` identifies the missing required field and links to tekID account management, with sign-in and sign-out actions. Existing sessions created before the `email` scope was added must sign in again; changing configured scopes does not update their stored ID token. If fresh sign-in still fails, check the user's required tekID profile fields and the application's scope configuration. Display names are managed under **Personal info**. An unassigned username requires no profile completion or extra sign-in; these members can view their name and photo normally.
 
-The tekID app logo uses the shared symbol-and-`wtf` wordmark assets in `public/dot-wtf-wordmark.svg` and `public/dot-wtf-wordmark-dark.svg`. Both are self-contained vectors without an entity prefix, ready for any `<entity-name>.wtf` app. The artwork is sized to 32px inside a transparent 40px-high canvas to fit Logto's logo slot. Regenerate them on macOS with `swift scripts/export-wordmark.swift`. Logto's light/dark app logo fields contain SVG data URLs from these files, so the preview works before deploying the assets. The favicon fields use `https://cwru.wtf/icon.svg`.
+The tekID app logo uses the dot\*WTF wordmark assets in `public/dot-wtf-wordmark.svg` and `public/dot-wtf-wordmark-dark.svg`: "dot", the burst mark as the asterisk, then "WTF", matching the site's `Wordmark`. Both are self-contained vectors. The artwork is sized to 32px inside a transparent 40px-high canvas to fit Logto's logo slot, and the sign-in CSS sizes the logo image by its own width so it is not squeezed. Regenerate them on macOS with `swift scripts/export-wordmark.swift`. Logto's light/dark app logo fields contain SVG data URLs from these files, so the preview works before deploying the assets. The favicon fields use `https://dott.wtf/icon.svg`.
 
-The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses the site's default light palette and rounded font stack, with charcoal `#1A1A1A` configured for both brand-color fields. At desktop widths, a warm-gray side panel shows the existing laptop cat from `https://cwru.wtf/cat-pc.png` and “create beyond the possible” At widths below 900px or heights below 560px, the decorative panel disappears so the form can use the whole screen. The illustration also shrinks with viewport height. The shared sign-in, registration, and recovery layouts retain their original controls and validation; the Google button stays above the email form. Nunito is loaded as the cross-platform fallback to SF Pro Rounded. App CSS replaces shared tekID CSS, so keep this copy in sync with the console. These settings apply only to the dot-wtf application.
+The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses the site's default light palette and rounded font stack, with charcoal `#1A1A1A` configured for both brand-color fields. At desktop widths, a warm-gray side panel shows the existing laptop cat from `https://dott.wtf/cat-pc.png` and “create beyond the possible” At widths below 900px or heights below 560px, the decorative panel disappears so the form can use the whole screen. The illustration also shrinks with viewport height. The shared sign-in, registration, and recovery layouts retain their original controls and validation; the Google button stays above the email form. Nunito is loaded as the cross-platform fallback to SF Pro Rounded. App CSS replaces shared tekID CSS, so keep this copy in sync with the console. These settings apply only to the dot-wtf application.
 
 ## Member applications and directory
 
@@ -117,8 +117,8 @@ Use `--user-id` instead of `--email` if email matches are ambiguous. The command
 
 Before switching an existing installation, follow [the local membership rollout](docs/local-membership-rollout.md). `pnpm import:logto-members` prepares a dry-run plan of current Logto organization membership. Only `--apply` writes it to PostgreSQL, in one transaction. Prior imports and local decisions are preserved, including later revocations. Keep import-only Management API credentials in the operator environment; remove them from the deployed app after cutover.
 
-Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm test:profiles`, `pnpm test:operators`, `pnpm test:member-schema`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://cwru.wtf pnpm build`. Database suites require their separate disposable fixture URLs; CI supplies all of them. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
+Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:tally`, `pnpm test:profiles`, `pnpm test:operators`, `pnpm test:member-schema`, `pnpm exec tsc --noEmit`, and `LOGTO_BASE_URL=https://dott.wtf pnpm build`. Database suites require their separate disposable fixture URLs; CI supplies all of them. Then verify tekID sign-in, reload, and sign-out; check dashboard access with an admin, an instance-lead, and an ordinary member; and confirm that a role removal applies on the next request. Integration follows the [tekID application guide](https://github.com/teKsafari/id/blob/main/docs/applications/index.md) and [Logto’s Next.js guide](https://docs.logto.io/quick-starts/next-app-router).
 
 ---
 
-**Join us:** Visit [cwru.wtf](https://cwru.wtf) to get started.
+**Join us:** Visit [dott.wtf](https://dott.wtf) to get started.

@@ -102,7 +102,7 @@ html, body, #app, #app > div[class*="viewBox"] {
 }
 /* Both configured logos have the same paths. Use charcoal on the light canvas. */
 #app .logto_branding-header img[class*="logo"] {
-  width: 80px !important;
+  width: auto !important;
   height: 40px !important;
   object-fit: contain;
   filter: brightness(0);
@@ -189,7 +189,7 @@ div[data-logto-signature-container="secured"][class*="signature"] {
     width: calc(46% - 24px);
     border: 1px solid var(--wtf-border);
     border-radius: 24px;
-    background: var(--wtf-panel) url("https://cwru.wtf/cat-pc.png") center 18% / min(46vw, calc(100svh - 160px), 660px) auto no-repeat;
+    background: var(--wtf-panel) url("https://dott.wtf/cat-pc.png") center 18% / min(46vw, calc(100svh - 160px), 660px) auto no-repeat;
     background-blend-mode: multiply;
     pointer-events: none;
   }

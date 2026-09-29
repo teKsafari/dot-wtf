@@ -14,5 +14,5 @@ class EventMessages(StrEnum):
 
         We look forward to seeing you there!
 
-        Message sent via dot*WTF Event Scheduler (visit us at https://cwru.wtf)
+        Message sent via dot*WTF Event Scheduler (visit us at https://dott.wtf)
 """

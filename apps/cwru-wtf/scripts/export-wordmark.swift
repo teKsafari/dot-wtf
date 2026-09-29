@@ -2,7 +2,8 @@
 
 // Run from the application directory on macOS:
 //   swift scripts/export-wordmark.swift
-// Export the shared dot wtf identity for tekID as rounded semibold outlines.
+// Export the shared dot*WTF identity for tekID as rounded semibold outlines:
+// "dot", the burst mark as the asterisk, then "WTF", spaced like the site's Wordmark.
 // No font file is bundled, embedded, or required to display the generated SVGs.
 
 import AppKit
@@ -91,10 +92,16 @@ func svgPath(_ path: CGPath, translatedBy offset: CGPoint) -> String {
     return commands.joined()
 }
 
-let symbolX: CGFloat = 0
+func advance(_ text: String) -> CGFloat {
+    let attributed = NSAttributedString(string: text, attributes: [.font: font, .kern: tracking])
+    return CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attributed), nil, nil, nil))
+}
+
+let prefix = shape("dot", at: 0)
+let symbolX = advance("dot") + symbolMargin
 // Like CSS vertical-align: middle, center the mark on half the font's x-height.
 let symbolY = -font.xHeight / 2 - symbolSize / 2
-let lettering = shape("wtf", at: symbolX + symbolSize + symbolMargin)
+let lettering = shape("WTF", at: symbolX + symbolSize + symbolMargin)
 let symbolScale = symbolSize / 16
 // Exact visible bounds of BrandExpansionMark, including its rounded strokes.
 let symbolBounds = CGRect(
@@ -103,22 +110,22 @@ let symbolBounds = CGRect(
     width: 13.61 * symbolScale,
     height: 13.48 * symbolScale
 )
-let bounds = lettering.boundingBoxOfPath.union(symbolBounds)
+let bounds = prefix.boundingBoxOfPath.union(lettering.boundingBoxOfPath).union(symbolBounds)
 let offset = CGPoint(x: padding - bounds.minX, y: padding - bounds.minY)
 let width = bounds.width + 2 * padding
 let height = bounds.height + 2 * padding
 let displayWidth = width / height * contentHeight
 let canvasHeight = height * displayHeight / contentHeight
 let canvasY = -(canvasHeight - height) / 2
-let letteringPath = svgPath(lettering, translatedBy: offset)
+let letteringPath = svgPath(prefix, translatedBy: offset) + svgPath(lettering, translatedBy: offset)
 
 for (filename, color) in [
     ("dot-wtf-wordmark.svg", "#1a1a1a"),
     ("dot-wtf-wordmark-dark.svg", "#eeeeec"),
 ] {
     let svg = """
-    <svg xmlns="http://www.w3.org/2000/svg" width="\(number(displayWidth))" height="\(number(displayHeight))" viewBox="0 \(number(canvasY)) \(number(width)) \(number(canvasHeight))" role="img" aria-label="dot wtf">
-      <title>dot wtf</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="\(number(displayWidth))" height="\(number(displayHeight))" viewBox="0 \(number(canvasY)) \(number(width)) \(number(canvasHeight))" role="img" aria-label="dot*WTF">
+      <title>dot*WTF</title>
       <g fill="\(color)">
         <g transform="translate(\(number(symbolX + offset.x)) \(number(symbolY + offset.y))) scale(\(number(symbolScale)))">
           <g transform="translate(3.25 2.82) scale(.62)">

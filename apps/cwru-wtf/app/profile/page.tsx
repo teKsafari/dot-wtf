@@ -63,7 +63,7 @@ export default async function ProfilePage({ searchParams }: {
                 ? "Add a valid email address to your tekID account, then sign in again."
                 : "We couldn’t load your sign-in details. Check your tekID account, then sign in again."}
             </p>
-            <a href="https://id.teksafari.org/account/security" target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open tekID account</a>
+            <a href="https://id.teksafari.com/account/security" target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open tekID account</a>
             <form action={signInWithTekid} className="mt-7">
               <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in again</ProfileSubmitButton>
             </form>

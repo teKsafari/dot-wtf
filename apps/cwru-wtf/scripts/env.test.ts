@@ -57,10 +57,10 @@ test('requires a database URL and a cookie secret of at least 32 characters', ()
 });
 
 test('accepts an origin with an optional trailing slash and normalizes it', () => {
-  for (const baseUrl of ['https://cwru.wtf', 'https://cwru.wtf/']) {
+  for (const baseUrl of ['https://dott.wtf', 'https://dott.wtf/']) {
     assert.equal(
       createApplicationEnv({ ...testEnvironment, LOGTO_BASE_URL: baseUrl }).LOGTO_BASE_URL,
-      'https://cwru.wtf'
+      'https://dott.wtf'
     );
   }
   assert.equal(
@@ -75,14 +75,14 @@ test('rejects origins that can change callbacks or include credentials', () => {
     'not-a-url',
     'javascript:alert(1)',
     'mailto:member@example.org',
-    'ftp://cwru.wtf',
-    'https://user:password@cwru.wtf',
-    'https://cwru.wtf/profile',
-    'https://cwru.wtf?next=https://example.org',
-    'https://cwru.wtf#fragment',
-    'https://cwru.wtf/../',
-    ' https://cwru.wtf',
-    'https:\\cwru.wtf',
+    'ftp://dott.wtf',
+    'https://user:password@dott.wtf',
+    'https://dott.wtf/profile',
+    'https://dott.wtf?next=https://example.org',
+    'https://dott.wtf#fragment',
+    'https://dott.wtf/../',
+    ' https://dott.wtf',
+    'https:\\dott.wtf',
   ]) {
     assert.throws(
       () => createApplicationEnv({ ...testEnvironment, LOGTO_BASE_URL: baseUrl }),
@@ -100,9 +100,9 @@ test('production requires HTTPS while development can use the Portless origin', 
     createApplicationEnv({
       ...testEnvironment,
       NODE_ENV: 'production',
-      LOGTO_BASE_URL: 'https://cwru.wtf',
+      LOGTO_BASE_URL: 'https://dott.wtf',
     }).LOGTO_BASE_URL,
-    'https://cwru.wtf'
+    'https://dott.wtf'
   );
   assert.equal(
     createApplicationEnv({ ...testEnvironment, NODE_ENV: 'development' }).LOGTO_BASE_URL,
@@ -206,8 +206,8 @@ test('production and local environments still require an explicit origin', () =>
         );
       }
       assert.equal(
-        createApplicationEnv({ ...input, LOGTO_BASE_URL: 'https://cwru.wtf' }).LOGTO_BASE_URL,
-        'https://cwru.wtf'
+        createApplicationEnv({ ...input, LOGTO_BASE_URL: 'https://dott.wtf' }).LOGTO_BASE_URL,
+        'https://dott.wtf'
       );
     }
   }
@@ -254,7 +254,7 @@ test('validation errors report variable names without exposing their values', ()
       ...testEnvironment,
       DATABASE_URL: 'private-database-value',
       LOGTO_COOKIE_SECRET: 'private-cookie-value',
-      LOGTO_BASE_URL: 'https://private-user:private-password@cwru.wtf',
+      LOGTO_BASE_URL: 'https://private-user:private-password@dott.wtf',
     }),
     (error) => {
       assert(error instanceof Error);

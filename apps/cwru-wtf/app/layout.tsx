@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://cwru.wtf"),
+  metadataBase: new URL("https://dott.wtf"),
   title: "dot*WTF - We Tinker Fearlessly",
   description: "A collective of students building the future (or just building cool stuff).",
   openGraph: {
