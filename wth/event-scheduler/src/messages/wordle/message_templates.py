@@ -6,7 +6,7 @@ class MessageGreetings(StrEnum):
 
 class MessageBodies(StrEnum):
     ITS_BEEN_A_WHILE = """
-    It's been a while since you last played CWRU*WTF Wordle. Come back to play and make your way to the top of the leaderboard!
+    It's been a while since you last played CWRU Wordle. Come back to play and make your way to the top of the leaderboard!
     """
 
 class MessageSubjects(StrEnum):

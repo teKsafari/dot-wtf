@@ -1,10 +1,10 @@
-# cwru.wtf website
+# dot WTF website
 
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 
-> A student-led collective for builders, tinkerers, and dreamers at Case Western Reserve University.
+> A student-led collective for builders, tinkerers, and dreamers. The site is served at [cwru.wtf](https://cwru.wtf) for now.
 
-## What is cwru.wtf?
+## What is dot WTF?
 
 This isn't a club where we talk about doing things—it's where we **actually do them**. We build hardware hacks, AI experiments, large-scale art, films, open-source tools, weird websites, and games. Anything that makes you say "wtf, I wanna try that."
 

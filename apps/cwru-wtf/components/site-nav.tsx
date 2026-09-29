@@ -7,12 +7,12 @@ import { TekidProfileContractError } from "@/lib/tekid/profile"
 const socialLinks = [
   {
     href: "https://github.com/teksafari/dot-wtf",
-    label: "CWRU.WTF on GitHub",
+    label: "dot WTF on GitHub",
     icon: Github,
   },
   {
     href: "https://instagram.com/cwru.wtf",
-    label: "CWRU.WTF on Instagram",
+    label: "dot WTF on Instagram",
     icon: Instagram,
   },
 ]

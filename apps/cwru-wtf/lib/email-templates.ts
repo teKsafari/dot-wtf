@@ -1,12 +1,12 @@
 // Email templates for different submission statuses
 export const emailTemplates = {
   approved: {
-    subject: 'Welcome to cwru.wtf! 🎉',
+    subject: 'Welcome to dot WTF! 🎉',
     html: (name: string) => `
       <div style="font-family: monospace; background-color: #000000; color: #ffffff; padding: 20px;">
-        <h1 style="color: #10B981;">Welcome to <span style="color: #EC4899;">cwru.wtf</span>, ${name}!</h1>
+        <h1 style="color: #10B981;">Welcome to <span style="color: #EC4899;">dot WTF</span>, ${name}!</h1>
         
-        <p>Congratulations! Your application has been approved and you're now officially part of the <strong>cwru.wtf</strong> community.</p>
+        <p>Congratulations! Your application has been approved and you're now officially part of the <strong>dot WTF</strong> community.</p>
         
         <h2 style="color: #10B981;">What's Next?</h2>
         <ul>
@@ -20,19 +20,19 @@ export const emailTemplates = {
         
         <p style="margin-top: 30px;">
           Best,<br>
-          The cwru.wtf Team
+          The dot WTF Team
         </p>
         
         <hr style="border-color: #374151; margin: 30px 0;">
         <p style="color: #6B7280; font-size: 12px;">
-          This email was sent to you because you applied to join cwru.wtf at Case Western Reserve University.
+          This email was sent to you because you applied to join dot WTF.
         </p>
       </div>
     `,
     text: (name: string) => `
-Welcome to cwru.wtf, ${name}!
+Welcome to dot WTF, ${name}!
 
-Congratulations! Your application has been approved and you're now officially part of the cwru.wtf community.
+Congratulations! Your application has been approved and you're now officially part of the dot WTF community.
 
 What's Next?
 - Join our Discord server: [Discord Link]
@@ -43,17 +43,17 @@ What's Next?
 We're excited to see what you'll build with us. Remember: We Tinker Fearlessly!
 
 Best,
-The cwru.wtf Team
+The dot WTF Team
     `
   },
   
   waitlisted: {
-    subject: "You're on the cwru.wtf waitlist",
+    subject: "You're on the dot WTF waitlist",
     html: (name: string) => `
       <div style="font-family: monospace; background-color: #000000; color: #ffffff; padding: 20px;">
-        <h1>You're on the cwru.wtf waitlist, ${name}</h1>
+        <h1>You're on the dot WTF waitlist, ${name}</h1>
         
-        <p>We've added your application to the <strong>cwru.wtf</strong> waitlist.</p>
+        <p>We've added your application to the <strong>dot WTF</strong> waitlist.</p>
         
         <p>We'll keep your application in consideration and reach out if a spot opens. In the meantime:</p>
         <ul>
@@ -66,14 +66,14 @@ The cwru.wtf Team
         
         <p style="margin-top: 30px;">
           Best,<br>
-          The cwru.wtf Team
+          The dot WTF Team
         </p>
       </div>
     `,
     text: (name: string) => `
-You're on the cwru.wtf waitlist, ${name}
+You're on the dot WTF waitlist, ${name}
 
-We've added your application to the cwru.wtf waitlist.
+We've added your application to the dot WTF waitlist.
 
 We'll keep your application in consideration and reach out if a spot opens. In the meantime:
 - Keep building and learning
@@ -83,7 +83,7 @@ We'll keep your application in consideration and reach out if a spot opens. In t
 We're glad you're interested in the maker community, and we hope to see you around campus.
 
 Best,
-The cwru.wtf Team
+The dot WTF Team
     `
   }
 };
