@@ -64,11 +64,11 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
   });
   after(async () => { await client.end(); });
   beforeEach(async () => {
-    await client`TRUNCATE TABLE users, profiles, memberships, member_audit_logs, member_number_counter RESTART IDENTITY CASCADE`;
+    await client`TRUNCATE TABLE users, profiles, memberships, member_audit_logs RESTART IDENTITY CASCADE`;
     await client`ALTER SEQUENCE member_number_seq RESTART WITH 1`;
   });
 
-  test('dry-run import and bootstrap leave profiles, counters, and audit rows unchanged', async () => {
+  test('dry-run import and bootstrap leave profiles, sequence, and audit rows unchanged', async () => {
     await seed('existing', { bio: 'Keep these answers' });
     await setNext(10);
     await database.insert(schema.memberAuditLogs).values({ actorId: 'existing', targetId: 'existing', action: 'profile.save' });
@@ -125,15 +125,27 @@ describe('membership operator Postgres integration', { skip: !testUrl, concurren
     await seed('rejected', { status: 'rejected' });
     await seed('approved', { status: 'approved', role: 'admin', memberNumber: 8, approvedAt: new Date(1000) });
     await database.insert(schema.memberAuditLogs).values({ actorId: 'operator', targetId: 'deleted-local', action: 'member.bootstrap' });
-    const before = (await snapshot()).profiles;
+    const before = await snapshot();
     const source = ['pending', 'rejected', 'approved', 'deleted-local'].map((id) => legacyMember(id));
     assert((await runImport(source)).every(({ outcome }) => outcome === 'local-decision'));
-    assert.deepEqual((await snapshot()).profiles, before);
-    assert.equal((await snapshot()).nextNumber, 9);
+    assert.deepEqual((await snapshot()).profiles, before.profiles);
+    assert.equal((await snapshot()).nextNumber, before.nextNumber);
     assert.equal((await snapshot()).audits.filter(({ action }) => action === importAuditAction).length, 4);
     const after = await snapshot();
     assert((await runImport(source)).every(({ outcome }) => outcome === 'already-imported'));
     assert.deepEqual(await snapshot(), after);
+  });
+
+  test('import allocation advances past canonical member numbers without a counter bridge', async () => {
+    await seed('existing-number', { status: 'approved', memberNumber: 8, approvedAt: new Date(1000) });
+    // Direct fixtures do not call the allocator. The runtime reconciles an older
+    // sequence with canonical numbers when it actually reserves a new number.
+    assert.equal(await nextSequence(), 1);
+    const before = await snapshot();
+    assert.equal((await runImport([legacyMember('new')], false))[0]!.memberNumber, 9);
+    assert.deepEqual(await snapshot(), before);
+    assert.equal((await runImport([legacyMember('new')]))[0]!.memberNumber, 9);
+    assert.equal(await nextSequence(), 10);
   });
 
   test('exhausted allocation rolls back earlier imported profiles, numbers, and audit rows', async () => {

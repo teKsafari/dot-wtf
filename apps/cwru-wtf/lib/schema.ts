@@ -81,17 +81,6 @@ export const memberNumberSequence = pgSequence('member_number_seq', {
   startWith: 1, minValue: 1, maxValue: 2147483647, increment: 1, cache: 1, cycle: false,
 });
 
-// Compatibility only for the deployed pre-split app. Migration 0012 bridges this
-// table to the sequence; new runtime code must not read or write it. Remove in a
-// later migration after the old deployment/rollback window has ended.
-export const legacyMemberNumberCounter = pgTable('member_number_counter', {
-  id: integer('id').primaryKey(),
-  nextNumber: integer('next_number').notNull().default(1),
-}, (table) => [
-  check('member_number_counter_singleton', sql`${table.id} = 1`),
-  check('member_number_counter_positive', sql`${table.nextNumber} > 0`),
-]);
-
 export const memberAuditLogs = pgTable('member_audit_logs', {
   id: serial('id').primaryKey(),
   actorId: text('actor_id').notNull(),
