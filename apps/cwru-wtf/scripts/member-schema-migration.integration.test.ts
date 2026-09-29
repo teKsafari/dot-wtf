@@ -614,3 +614,156 @@ describe('targeted administrator approval migration', { skip: !testUrl, concurre
     assert.equal((await sequence()).last_value, '2147483647');
   });
 });
+
+describe('member compatibility cleanup migration', { skip: !testUrl, concurrency: false }, () => {
+  const client = postgres(testUrl!, { max: 3, onnotice: () => {} });
+  const applyCleanup = async () => {
+    const script = await readFile(`${folder}0015_remove_member_compatibility.sql`, 'utf8');
+    await client.begin(async (tx) => {
+      for (const statement of script.split('--> statement-breakpoint')) {
+        if (statement.trim()) await tx.unsafe(statement);
+      }
+    });
+  };
+  const canonicalSnapshot = async () => ({
+    users: await client`SELECT * FROM users ORDER BY tekid_user_id`,
+    profiles: await client`SELECT * FROM profiles ORDER BY user_id`,
+    memberships: await client`SELECT * FROM memberships ORDER BY user_id`,
+    audits: await client`SELECT * FROM member_audit_logs ORDER BY id`,
+  });
+  const sequence = async () => (await client`SELECT last_value::text,is_called FROM member_number_seq`)[0]!;
+  const compatibilityObjects = async () => ({
+    relations: await client`SELECT relname,relkind FROM pg_class WHERE oid IN
+      (to_regclass('public.member_profiles'),to_regclass('public.member_number_counter')) ORDER BY relname`,
+    triggers: await client`SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname IN
+      ('member_profiles_compat_write','member_number_counter_sequence_bridge','memberships_legacy_counter_bridge') ORDER BY tgname`,
+    functions: await client`SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
+      ('write_legacy_member_profile','advance_member_number_high_water','bridge_legacy_member_counter','bridge_numbered_membership') ORDER BY proname`,
+  });
+  const seed = async (id: string, number: number | null = null) => client.begin(async (tx) => {
+    const [user] = await tx`INSERT INTO users (tekid_user_id,email,email_verified,created_at,updated_at)
+      VALUES (${id},${`${id}@example.org`},true,'2025-01-01','2025-02-01') RETURNING id`;
+    await tx`INSERT INTO profiles (user_id,name,picture,categories,institution,other_category,whatsapp,
+      bio,wtf_idea,current_project,youtube_link,social_links,created_at,updated_at)
+      VALUES (${user!.id},${`Chosen ${id}`},'https://example.org/photo.png','["Research","Other"]',
+        'School, city','Robots','+15555550123','Saved bio','Saved idea','Saved project',
+        'https://example.org/video','{"portfolio":"https://example.org","github":"https://github.com/example"}',
+        '2025-01-01','2025-02-01')`;
+    await tx`INSERT INTO memberships (user_id,status,role,member_number,approved_at,created_at,updated_at)
+      VALUES (${user!.id},${number === null ? 'draft' : 'approved'},${number === 0 ? 'admin' : 'member'},
+        ${number},${number === null ? null : new Date('2025-02-01')},'2025-01-01','2025-02-01')`;
+    return user!.id as string;
+  });
+
+  before(async () => {
+    assert.equal((await client`SELECT current_database() AS name`)[0]!.name, 'dot_wtf_split_migration_test');
+  });
+  after(async () => { await client.end(); });
+  beforeEach(async () => {
+    await client`DROP SCHEMA public CASCADE`;
+    await client`CREATE SCHEMA public`;
+    await client.begin(async (tx) => {
+      for (const entry of journal.entries.filter(({ idx }) => idx <= 14)) {
+        const script = await readFile(`${folder}${entry.tag}.sql`, 'utf8');
+        for (const statement of script.split('--> statement-breakpoint')) {
+          if (statement.trim()) await tx.unsafe(statement);
+        }
+      }
+    });
+  });
+
+  test('cleanup removes only compatibility objects while preserving member zero, every canonical field, audits, and current sequence state', async () => {
+    await seed('zero-admin', 0);
+    await seed('other-member', 17);
+    await client`INSERT INTO member_audit_logs (actor_id,target_id,action,details)
+      VALUES ('operator:existing','zero-admin','member.set-number','{"migration":"0014_member_zero","after":{"memberNumber":0}}'),
+        ('operator:existing','other-member','member.import-logto','{"outcome":"import"}')`;
+    await client`UPDATE member_number_counter SET next_number=120 WHERE id=1`;
+    await client`SELECT nextval('member_number_seq')`;
+    const original = await canonicalSnapshot();
+    const originalSequence = await sequence();
+    await applyCleanup();
+    assert.deepEqual(await canonicalSnapshot(), original);
+    assert.deepEqual(await sequence(), originalSequence);
+    const objects = await compatibilityObjects();
+    assert.equal(objects.relations.length, 0);
+    assert.equal(objects.triggers.length, 0);
+    assert.equal(objects.functions.length, 0);
+    assert.equal((await client`SELECT member_number FROM memberships WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='zero-admin')`)[0]!.member_number, 0);
+    assert.equal(Number((await client`SELECT nextval('member_number_seq') AS n`)[0]!.n), 121);
+  });
+
+  test('the legacy counter high water is retained when it is ahead of both the sequence and assigned numbers', async () => {
+    await seed('historical-member', 10);
+    await client`UPDATE member_number_counter SET next_number=90 WHERE id=1`;
+    await client`SELECT setval('member_number_seq',5,true)`;
+    const original = await canonicalSnapshot();
+    await applyCleanup();
+    assert.deepEqual(await canonicalSnapshot(), original);
+    assert.deepEqual(await sequence(), { last_value: '90', is_called: false });
+    assert.equal(Number((await client`SELECT nextval('member_number_seq') AS n`)[0]!.n), 90);
+  });
+
+  test('the largest assigned number repairs a lagging sequence even if the compatibility counter row is absent', async () => {
+    await seed('existing-member', 42);
+    await client`TRUNCATE member_number_counter`;
+    await client`SELECT setval('member_number_seq',1,false)`;
+    await applyCleanup();
+    assert.deepEqual(await sequence(), { last_value: '43', is_called: false });
+    assert.equal(Number((await client`SELECT nextval('member_number_seq') AS n`)[0]!.n), 43);
+  });
+
+  test('an unexpected dependency rolls back dropped objects and does not advance the nontransactional sequence', async () => {
+    await seed('zero-admin', 0);
+    await client`UPDATE member_number_counter SET next_number=120 WHERE id=1`;
+    await client`SELECT setval('member_number_seq',10,false)`;
+    await client`CREATE VIEW unexpected_counter_consumer AS SELECT next_number FROM member_number_counter`;
+    const original = await canonicalSnapshot();
+    const originalObjects = await compatibilityObjects();
+    const originalSequence = await sequence();
+    const originalCounter = await client`SELECT * FROM member_number_counter`;
+    await assert.rejects(applyCleanup,
+      (error: unknown) => typeof error==='object' && error!==null && 'code' in error && error.code==='2BP01');
+    assert.deepEqual(await canonicalSnapshot(), original);
+    assert.deepEqual(await compatibilityObjects(), originalObjects);
+    assert.deepEqual(await sequence(), originalSequence);
+    assert.deepEqual(await client`SELECT * FROM member_number_counter`, originalCounter);
+    assert.equal((await client`SELECT member_number FROM member_profiles WHERE tekid_user_id='zero-admin'`)[0]!.member_number, 0);
+  });
+
+  test('canonical writes and sequence allocation continue after cleanup with foreign keys and number constraints intact', async () => {
+    await seed('zero-admin', 0);
+    await seed('existing-member', 9);
+    await applyCleanup();
+    const originalSequence = await sequence();
+    const applicantId = await seed('new-applicant');
+    assert.deepEqual(await sequence(), originalSequence);
+    await client.begin(async (tx) => {
+      await tx.unsafe(lock);
+      const number = Number((await tx`SELECT nextval('member_number_seq') AS n`)[0]!.n);
+      assert.equal(number, 10);
+      await tx`UPDATE memberships SET status='approved',member_number=${number},approved_at=now() WHERE user_id=${applicantId}`;
+    });
+    assert.equal((await client`SELECT member_number FROM memberships WHERE user_id=${applicantId}`)[0]!.member_number, 10);
+    await assert.rejects(() => client`UPDATE memberships SET member_number=0 WHERE user_id=${applicantId}`,
+      (error: unknown) => typeof error==='object' && error!==null && 'code' in error && error.code==='23505');
+    await assert.rejects(() => client`UPDATE memberships SET member_number=-1 WHERE user_id=${applicantId}`,
+      (error: unknown) => typeof error==='object' && error!==null && 'code' in error && error.code==='23514');
+    await assert.rejects(() => client`INSERT INTO memberships (user_id) VALUES (gen_random_uuid())`,
+      (error: unknown) => typeof error==='object' && error!==null && 'code' in error && error.code==='23503');
+    await client`DELETE FROM users WHERE id=${applicantId}`;
+    assert.equal((await client`SELECT * FROM memberships WHERE user_id=${applicantId}`).length, 0);
+    assert.equal((await client`SELECT * FROM profiles WHERE user_id=${applicantId}`).length, 0);
+  });
+
+  test('cleanup preserves a fully exhausted sequence instead of rewinding its sentinel', async () => {
+    await seed('zero-admin', 0);
+    await client`SELECT setval('member_number_seq',2147483647,true)`;
+    const original = await sequence();
+    await applyCleanup();
+    assert.deepEqual(await sequence(), original);
+    await assert.rejects(() => client`SELECT nextval('member_number_seq')`);
+    assert.deepEqual(await sequence(), original);
+    assert.equal((await client`SELECT member_number FROM memberships`)[0]!.member_number, 0);
+  });
+});

@@ -73,7 +73,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
   };
   const nextNumber = () => withMemberMutationLock(db, peekNextMemberNumber);
   async function clearDatabase() {
-    await db.execute(sql`truncate table member_audit_logs, memberships, profiles, users, member_number_counter restart identity cascade`);
+    await db.execute(sql`truncate table member_audit_logs, memberships, profiles, users restart identity cascade`);
     await db.execute(sql`select setval('member_number_seq', 1, false)`);
   }
 
