@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import ClubCat from "@/components/club-cat"
 import DeskCat from "@/components/desk-cat"
 import PeekCat from "@/components/peek-cat"
 import TopCat from "@/components/top-cat"
@@ -8,7 +9,6 @@ import WtfMeanings from "@/components/wtf-meanings"
 import Wordmark from "@/components/wordmark"
 import SiteFooter from "@/components/site-footer"
 import SiteNav from "@/components/site-nav"
-import clubCat from "@/public/cat-i-am.png"
 
 
 
@@ -74,19 +74,13 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Tint the original drawing with the same color as the other cats. */}
           <div
             role="img"
             aria-label={'A cat in sunglasses throwing finger guns, replying "I am."'}
-            className="mx-auto w-full max-w-[320px] bg-current text-foreground/80 md:max-w-[400px]"
-            style={{
-              aspectRatio: `${clubCat.width} / ${clubCat.height}`,
-              maskImage: `url("${clubCat.src}")`,
-              maskSize: "contain",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-            }}
-          />
+            className="mx-auto w-full max-w-[320px] text-foreground/80 md:max-w-[400px]"
+          >
+            <ClubCat className="h-auto w-full" />
+          </div>
         </div>
       </section>
 
