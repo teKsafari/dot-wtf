@@ -72,14 +72,17 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     return row;
   };
   const nextNumber = () => withMemberMutationLock(db, peekNextMemberNumber);
+  async function clearDatabase() {
+    await db.execute(sql`truncate table member_audit_logs, memberships, profiles, users, member_number_counter restart identity cascade`);
+    await db.execute(sql`select setval('member_number_seq', 1, false)`);
+  }
 
   before(async () => {
     await migrate(db, { migrationsFolder: resolve(process.cwd(), 'drizzle') });
   });
   after(async () => { await client.end(); });
   beforeEach(async () => {
-    await db.execute(sql`truncate table member_audit_logs, memberships, profiles, users, member_number_counter restart identity cascade`);
-    await db.execute(sql`select setval('member_number_seq', 1, false)`);
+    await clearDatabase();
     await insertProfiles([
       profile('admin', { role: 'admin', status: 'approved', memberNumber: 1, approvedAt: now }),
       profile('lead', { role: 'instance-lead', status: 'approved', memberNumber: 2, approvedAt: now }),
@@ -107,6 +110,53 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     assert.equal(await nextNumber(), 51);
     const loser = (await read('one')).status === 'pending' ? 'one' : 'two';
     assert.equal((await service().reviewMember(loser, { action: 'approve' })).memberNumber, 51);
+  });
+
+  test('custom zero survives suspension and restoration, rejects collisions, and is recorded in audits', async () => {
+    await insertProfiles([profile('zero'), profile('collision'), profile('automatic')]);
+    const before = await nextNumber();
+    assert.equal((await service().reviewMember('zero', { action: 'approve', memberNumber: 0 })).memberNumber, 0);
+    assert.equal(await nextNumber(), before);
+    await assert.rejects(service().reviewMember('collision', { action: 'approve', memberNumber: 0 }), isStatus(409));
+    assert.equal((await read('collision')).status, 'pending');
+    assert.equal(await nextNumber(), before);
+    await service().reviewMember('zero', { action: 'suspend' });
+    assert.equal((await service().reviewMember('zero', { action: 'approve' })).memberNumber, 0);
+    assert.equal((await service().reviewMember('zero', { action: 'set-number', memberNumber: 0 })).memberNumber, 0);
+    assert.equal(await nextNumber(), before);
+    const audits = await db.select().from(schema.memberAuditLogs).where(eq(schema.memberAuditLogs.targetId, 'zero'));
+    assert.equal(audits.length, 4);
+    assert.ok(audits.every(({ details }) => (details.after as { memberNumber: number }).memberNumber === 0));
+    assert.equal((await service().reviewMember('automatic', { action: 'approve' })).memberNumber, before);
+  });
+
+  test('renumbering to zero preserves the automatic high water and remains admin-only', async () => {
+    await insertProfiles([profile('high'), profile('later')]);
+    await service().reviewMember('high', { action: 'approve', memberNumber: 100 });
+    await assert.rejects(service('lead').reviewMember('high', { action: 'set-number', memberNumber: 0 }), isStatus(403));
+    await assert.rejects(service('lead').reviewMember('later', { action: 'approve', memberNumber: 0 }), isStatus(403));
+    assert.equal((await service().reviewMember('high', { action: 'set-number', memberNumber: 0 })).memberNumber, 0);
+    assert.equal(await nextNumber(), 101);
+    assert.equal((await service().reviewMember('later', { action: 'approve' })).memberNumber, 101);
+    await assert.rejects(service().reviewMember('later', { action: 'set-number', memberNumber: 0 }), isStatus(409));
+    assert.equal((await read('later')).memberNumber, 101);
+  });
+
+  test('a zero-numbered founding admin leaves the first automatic member number at one', async () => {
+    await clearDatabase();
+    await insertProfiles([
+      profile('admin', { role: 'admin', status: 'approved', memberNumber: 0, approvedAt: now }),
+      profile('first-auto'),
+    ]);
+    assert.equal(await nextNumber(), 1);
+    assert.equal((await service().reviewMember('first-auto', { action: 'approve' })).memberNumber, 1);
+    const directory = await createMemberDirectory({
+      getAuthContext: async () => identity('admin'), loadMembers: async () => loadDirectoryRecords(db),
+    })();
+    assert.equal(directory.status, 'member');
+    if (directory.status === 'member') {
+      assert.deepEqual(directory.members.map(({ memberNumber }) => memberNumber), [0, 1]);
+    }
   });
 
   test('manual renumbering advances the sequence and automatic numbers never move backward', async () => {
@@ -206,7 +256,7 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     assert.equal(first.members[0]!.fields.whatsapp, '+15555550123');
     await assert.rejects(service('pending-0').listMembers(), isStatus(403));
     for (const mutation of [
-      { action: 'approve', role: 'admin' }, { action: 'approve', memberNumber: 0 },
+      { action: 'approve', role: 'admin' }, { action: 'approve', memberNumber: -1 },
       { action: 'approve', memberNumber: maximumMemberNumber + 1 },
       { action: 'approve', memberNumber: '3' }, { action: 'delete' },
     ]) await assert.rejects(service().reviewMember('pending-0', mutation), isStatus(400));

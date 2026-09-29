@@ -99,6 +99,13 @@
       "when": 1790638558934,
       "tag": "0013_approve_ignas_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790639846670,
+      "tag": "0014_member_zero",
+      "breakpoints": true
     }
   ]
 }

@@ -77,6 +77,19 @@ test('directory permits only approved local members and projects only public fie
   await assert.rejects(createMemberDirectory({ getAuthContext: async () => auth, loadMembers: async () => { throw new Error('unavailable'); } })());
 });
 
+test('directory preserves member number zero and sorts it before positive or missing numbers', async () => {
+  const directory = await createMemberDirectory({
+    getAuthContext: async () => auth,
+    loadMembers: async () => [record('unnumbered', { memberNumber: null }), record('ada'), record('zero', { memberNumber: 0 })],
+  })();
+  assert.equal(directory.status, 'member');
+  if (directory.status === 'member') {
+    assert.deepEqual(directory.members.map(({ id, memberNumber }) => ({ id, memberNumber })), [
+      { id: 'zero', memberNumber: 0 }, { id: 'ada', memberNumber: 1 }, { id: 'unnumbered', memberNumber: null },
+    ]);
+  }
+});
+
 test('signed-out member mutations never enter a transaction', async () => {
   const service = createMemberService({
     getAuthContext: async () => ({ isAuthenticated: false, claims: null }),

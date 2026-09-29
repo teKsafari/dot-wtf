@@ -92,7 +92,7 @@ The first eligible verified sign-in can copy matching historical application ans
 
 ## Local roles and dashboard access
 
-The **Applications & members** dashboard opens on pending profiles. Reviewers read the full submitted application and approve or reject it. Approval adds the profile to the directory and assigns the next unused member number in approval order. An admin can choose a custom number at approval or change an existing number; duplicate numbers are rejected. Numbers remain attached to rejected or suspended profiles and are not automatically reused.
+The **Applications & members** dashboard opens on pending profiles. Reviewers read the full submitted application and approve or reject it. Approval adds the profile to the directory and assigns the next unused member number in approval order. An admin can choose a custom number, including zero, at approval or change an existing number; duplicate numbers are rejected. Automatic numbering starts at one and never rewinds after renumbering. Numbers remain attached to rejected or suspended profiles and are not automatically reused.
 
 | Access | Approved member | `instance-lead` | `admin` |
 | --- | --- | --- | --- |

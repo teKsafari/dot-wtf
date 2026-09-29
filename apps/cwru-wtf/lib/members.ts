@@ -23,7 +23,7 @@ export const maximumMemberNumber = 2_147_483_646;
 export const memberMutationLockKey = 'dot-wtf:membership';
 const pageSize = 20;
 const userIdSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
-const memberNumberSchema = z.number().int().min(1).max(maximumMemberNumber);
+const memberNumberSchema = z.number().int().min(0).max(maximumMemberNumber);
 const mutationSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('approve'), memberNumber: memberNumberSchema.optional() }).strict(),
   z.object({ action: z.literal('reject') }).strict(),
@@ -92,7 +92,7 @@ export function toDashboardMember(member: MemberRecord): DashboardMember {
 
 function parseInput<T extends z.ZodTypeAny>(validator: T, input: unknown): z.infer<T> {
   const parsed = validator.safeParse(input);
-  if (!parsed.success) throw new MemberError(400, 'Provide a valid member, action, status, page, and positive member number.');
+  if (!parsed.success) throw new MemberError(400, 'Provide a valid member, action, status, page, and nonnegative whole member number.');
   return parsed.data;
 }
 
@@ -255,7 +255,7 @@ export async function peekNextMemberNumber(transaction: MembershipTransactionDat
 
 export async function reserveMemberNumber(transaction: MembershipTransactionDatabase, requested?: number): Promise<number> {
   if (requested !== undefined && !memberNumberSchema.safeParse(requested).success) {
-    throw new MemberError(400, `Choose a whole member number between 1 and ${maximumMemberNumber}.`);
+    throw new MemberError(400, `Choose a whole member number between 0 and ${maximumMemberNumber}.`);
   }
   if (requested !== undefined) {
     const [collision] = await transaction.select({ id: memberships.id }).from(memberships)

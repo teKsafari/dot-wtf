@@ -45,7 +45,7 @@ Deploy the code with only the four Logto sign-in variables and `DATABASE_URL`; r
 
 The importer sorts newly imported accounts by organization `joinedAt` when the API provides it; otherwise it uses the account's `createdAt`, breaking equal timestamps by user ID. The installed Logto API currently omits organization join timestamps. **Account creation order is only an approximation of historical membership order.** The dry-run output names the fallback so an operator can review it before applying.
 
-Already assigned local numbers are preserved. Unimported accounts receive the next numbers after the sequence high water or current maximum, whichever is higher; the importer never renumbers existing members to recreate a global historical order. For imported rows without a join timestamp, `approvedAt` records the import time instead of pretending account creation was approval. An admin can assign available custom numbers after review. Supported numbers are 1 through 2,147,483,646; the following integer marks allocator exhaustion. Draft creation, reads, and dry runs do not allocate numbers. Renumbering does not change a user's UUID or their membership's UUID, and lowering a number never lowers the allocation high water.
+Already assigned local numbers are preserved. Unimported accounts receive the next numbers after the sequence high water or current maximum, whichever is higher; the importer never renumbers existing members to recreate a global historical order. For imported rows without a join timestamp, `approvedAt` records the import time instead of pretending account creation was approval. An admin can assign available custom numbers after review. Supported numbers are 0 through 2,147,483,646; the following integer marks allocator exhaustion. Zero is an explicit assignment; automatic numbering starts at 1. Draft creation, reads, and dry runs do not allocate numbers. Renumbering does not change a user's UUID or their membership's UUID, and lowering a number never lowers the allocation high water.
 
 ## Split-table migration and compatibility
 
@@ -60,6 +60,8 @@ Confirm the target before running `pnpm db:migrate`: `drizzle.config.ts` consume
 ## Bootstrap and recovery
 
 Migration `0013_approve_ignas_admin` performs the requested one-time bootstrap of the existing verified `ignas@teksafari.org` account. It approves the membership, grants `admin`, preserves an existing number or allocates one, and records a durable `member.bootstrap` audit marker. Other accounts and profile answers remain unchanged. It skips databases without that account, rejects ambiguous or unverified matches and revoked memberships, and never regrants access after a successful application, even if the SQL is replayed. It does not create an automatic grant for future sign-ins.
+
+Migration `0014_member_zero` allows explicit number zero and assigns it to that verified, approved administrator. It preserves approval, roles, UUIDs, other accounts, and the automatic allocation high water. A durable `member.set-number` audit marker prevents replay from overriding later renumbering or revocation. Missing accounts are skipped, and ambiguous, unverified, unapproved, non-admin, or conflicting assignments abort the transaction.
 
 If there is no usable imported administrator, the intended operator must first sign in with a verified email and visit `/profile` to create a local row:
 

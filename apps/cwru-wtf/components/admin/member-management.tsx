@@ -489,8 +489,8 @@ function MemberDetail({
   }, [member.status]);
 
   function readNumber(value: string) {
-    if (!/^[1-9][0-9]*$/.test(value) || Number(value) > 2147483646) {
-      setNumberError("Enter a whole member number from 1 to 2,147,483,646.");
+    if (!/^(0|[1-9][0-9]*)$/.test(value) || Number(value) > 2147483646) {
+      setNumberError("Enter a whole member number from 0 to 2,147,483,646.");
       return null;
     }
     setNumberError(null);
@@ -633,7 +633,7 @@ function MemberDetail({
                   id="approval-member-number"
                   type="number"
                   inputMode="numeric"
-                  min={1}
+                  min={0}
                   max={2147483646}
                   step={1}
                   value={numberInput}
@@ -771,7 +771,7 @@ function MemberDetail({
                 type="number"
                 inputMode="numeric"
                 required
-                min={1}
+                min={0}
                 max={2147483646}
                 step={1}
                 value={newNumber}

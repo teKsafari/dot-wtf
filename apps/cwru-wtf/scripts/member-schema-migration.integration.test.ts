@@ -251,6 +251,167 @@ describe('member split migration and deployed-app compatibility', { skip: !testU
   });
 });
 
+describe('targeted member-zero migration', { skip: !testUrl, concurrency: false }, () => {
+  const client = postgres(testUrl!, { max: 3, onnotice: () => {} });
+  const migration = '0014_member_zero';
+  const applyZero = async () => {
+    const script = await readFile(`${folder}${migration}.sql`, 'utf8');
+    await client.begin(async (tx) => {
+      for (const statement of script.split('--> statement-breakpoint')) {
+        if (statement.trim()) await tx.unsafe(statement);
+      }
+    });
+  };
+  const snapshot = async () => ({
+    users: await client`SELECT * FROM users ORDER BY tekid_user_id`,
+    profiles: await client`SELECT * FROM profiles ORDER BY user_id`,
+    memberships: await client`SELECT * FROM memberships ORDER BY user_id`,
+    audits: await client`SELECT * FROM member_audit_logs ORDER BY id`,
+    counter: await client`SELECT * FROM member_number_counter ORDER BY id`,
+    sequence: await client`SELECT last_value::text,is_called FROM member_number_seq`,
+  });
+  const readMembership = async (id: string) => (await client`SELECT m.* FROM memberships m
+    JOIN users u ON u.id=m.user_id WHERE u.tekid_user_id=${id}`)[0]!;
+  const markers = async () => client`SELECT * FROM member_audit_logs WHERE details->>'migration'=${migration} ORDER BY id`;
+  const seed = async (id: string, email: string, options: {
+    verified?: boolean; status?: string; role?: string; memberNumber: number;
+  }) => client.begin(async (tx) => {
+    const [user] = await tx`INSERT INTO users (tekid_user_id,email,email_verified,created_at,updated_at)
+      VALUES (${id},${email},${options.verified ?? true},'2025-01-01','2025-02-01') RETURNING id`;
+    await tx`INSERT INTO profiles (user_id,name,picture,categories,institution,other_category,whatsapp,
+      bio,wtf_idea,current_project,youtube_link,social_links,created_at,updated_at)
+      VALUES (${user!.id},${`Chosen ${id}`},'https://example.org/photo.png','["Research","Other"]',
+        'School, city','Robots','+15555550123','Saved bio','Saved idea','Saved project',
+        'https://example.org/video','{"portfolio":"https://example.org","github":"https://github.com/example"}',
+        '2025-01-01','2025-02-01')`;
+    await tx`INSERT INTO memberships (user_id,status,role,member_number,submitted_at,approved_at,
+      reviewed_at,reviewed_by,created_at,updated_at)
+      VALUES (${user!.id},${options.status ?? 'approved'},${options.role ?? 'admin'},
+        ${options.memberNumber},'2025-01-15','2025-02-01','2025-02-01','operator:existing','2025-01-01','2025-02-01')`;
+    return user!.id as string;
+  });
+
+  before(async () => {
+    assert.equal((await client`SELECT current_database() AS name`)[0]!.name, 'dot_wtf_split_migration_test');
+  });
+  after(async () => { await client.end(); });
+  beforeEach(async () => {
+    await client`DROP SCHEMA public CASCADE`;
+    await client`CREATE SCHEMA public`;
+    await client.begin(async (tx) => {
+      for (const entry of journal.entries.filter(({ idx }) => idx <= 13)) {
+        const script = await readFile(`${folder}${entry.tag}.sql`, 'utf8');
+        for (const statement of script.split('--> statement-breakpoint')) {
+          if (statement.trim()) await tx.unsafe(statement);
+        }
+      }
+    });
+  });
+
+  test('the verified approved administrator moves from one to zero without changing other data or allocation high water', async () => {
+    await seed('intended-admin', 'IGNAS@TEKSAFARI.ORG', { memberNumber: 1 });
+    await seed('other-member', 'other@example.org', { role: 'member', memberNumber: 17 });
+    await client`UPDATE member_number_counter SET next_number=120 WHERE id=1`;
+    await client`INSERT INTO member_audit_logs (actor_id,target_id,action,details)
+      VALUES ('operator:existing','intended-admin','member.bootstrap','{"migration":"0013_approve_ignas_admin"}')`;
+    const original = await snapshot();
+    const originalMembership = await readMembership('intended-admin');
+    const otherMembership = await readMembership('other-member');
+    await applyZero();
+    const current = await snapshot();
+    assert.deepEqual(current.users, original.users);
+    assert.deepEqual(current.profiles, original.profiles);
+    assert.deepEqual(current.counter, original.counter);
+    assert.deepEqual(current.sequence, original.sequence);
+    assert.deepEqual(await readMembership('other-member'), otherMembership);
+    const target = await readMembership('intended-admin');
+    assert.equal(target.member_number, 0);
+    for (const field of ['id','user_id','status','role','created_at','submitted_at','approved_at','reviewed_at','reviewed_by']) {
+      assert.deepEqual(target[field], originalMembership[field]);
+    }
+    assert.deepEqual(current.audits.filter((audit) => original.audits.some((old) => old.id===audit.id)), [...original.audits]);
+    const audit = await markers();
+    assert.equal(audit.length, 1);
+    assert.equal(current.audits.length, original.audits.length+1);
+    assert.equal(audit[0]!.target_id, 'intended-admin');
+    assert.equal(audit[0]!.action, 'member.set-number');
+    assert.equal(audit[0]!.actor_id, 'operator:migration:0014');
+    assert.deepEqual(audit[0]!.details, {
+      migration,
+      before: { status: 'approved', role: 'admin', memberNumber: 1 },
+      after: { status: 'approved', role: 'admin', memberNumber: 0 },
+    });
+  });
+
+  test('a fresh database gains zero support without creating accounts, while negative and duplicate zero numbers remain invalid', async () => {
+    const original = await snapshot();
+    await applyZero();
+    assert.deepEqual(await snapshot(), original);
+    await seed('zero-member', 'zero@example.org', { role: 'member', memberNumber: 0 });
+    await seed('other-member', 'other@example.org', { role: 'member', memberNumber: 1 });
+    const valid = await snapshot();
+    await assert.rejects(() => client`UPDATE memberships SET member_number=0
+      WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='other-member')`,
+      (error: unknown) => typeof error==='object' && error!==null && 'code' in error && error.code==='23505');
+    await assert.rejects(() => client`UPDATE memberships SET member_number=-1
+      WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='zero-member')`);
+    assert.deepEqual(await snapshot(), valid);
+    assert.equal((await markers()).length, 0);
+  });
+
+  test('duplicate, unverified, non-admin, unapproved, and missing-membership targets fail closed', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org', { verified: false, memberNumber: 1 });
+    const expectUnchangedFailure = async () => {
+      const original = await snapshot();
+      await assert.rejects(applyZero);
+      assert.deepEqual(await snapshot(), original);
+      assert.equal((await markers()).length, 0);
+    };
+    await expectUnchangedFailure();
+    await client`UPDATE users SET email_verified=true WHERE tekid_user_id='intended-admin'`;
+    await seed('duplicate-email', 'IGNAS@TEKSAFARI.ORG', { memberNumber: 2 });
+    await expectUnchangedFailure();
+    await client`DELETE FROM users WHERE tekid_user_id='duplicate-email'`;
+    await client`UPDATE memberships SET role='member'`;
+    await expectUnchangedFailure();
+    await client`UPDATE memberships SET role='admin'`;
+    for (const status of ['draft','pending','rejected','suspended']) {
+      await client`UPDATE memberships SET status=${status}`;
+      await expectUnchangedFailure();
+    }
+    await client`DELETE FROM memberships`;
+    await expectUnchangedFailure();
+  });
+
+  test('an occupied zero causes atomic rollback without renumbering either account', async () => {
+    await applyZero(); // Install the inclusive constraint with no matching target or grant marker.
+    await seed('zero-owner', 'zero@example.org', { role: 'member', memberNumber: 0 });
+    await seed('intended-admin', 'ignas@teksafari.org', { memberNumber: 1 });
+    const original = await snapshot();
+    await assert.rejects(applyZero);
+    assert.deepEqual(await snapshot(), original);
+    assert.equal((await readMembership('zero-owner')).member_number, 0);
+    assert.equal((await readMembership('intended-admin')).member_number, 1);
+    assert.equal((await markers()).length, 0);
+  });
+
+  test('a successful marker prevents replay from restoring zero after renumbering or revocation', async () => {
+    await seed('intended-admin', 'ignas@teksafari.org', { memberNumber: 1 });
+    await applyZero();
+    assert.equal((await readMembership('intended-admin')).member_number, 0);
+    await client`UPDATE memberships SET member_number=11 WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='intended-admin')`;
+    const renumbered = await snapshot();
+    await applyZero();
+    assert.deepEqual(await snapshot(), renumbered);
+    await client`UPDATE memberships SET status='suspended',role='member',reviewed_by='another-admin',reviewed_at=now()
+      WHERE user_id=(SELECT id FROM users WHERE tekid_user_id='intended-admin')`;
+    const revoked = await snapshot();
+    await applyZero();
+    assert.deepEqual(await snapshot(), revoked);
+    assert.equal((await markers()).length, 1);
+  });
+});
+
 describe('targeted administrator approval migration', { skip: !testUrl, concurrency: false }, () => {
   const client = postgres(testUrl!, { max: 3, onnotice: () => {} });
   const migration = '0013_approve_ignas_admin';

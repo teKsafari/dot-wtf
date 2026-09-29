@@ -70,7 +70,7 @@ export const memberships = pgTable('memberships', {
 }, (table) => [
   check('memberships_status_check', sql`${table.status} in ('draft', 'pending', 'approved', 'rejected', 'suspended')`),
   check('memberships_role_check', sql`${table.role} in ('member', 'instance-lead', 'admin')`),
-  check('memberships_number_check', sql`${table.memberNumber} is null or ${table.memberNumber} between 1 and 2147483646`),
+  check('memberships_number_check', sql`${table.memberNumber} is null or ${table.memberNumber} between 0 and 2147483646`),
   check('memberships_approval_check', sql`${table.status} <> 'approved' or (${table.memberNumber} is not null and ${table.approvedAt} is not null)`),
   index('memberships_review_idx').on(table.status, table.submittedAt),
 ]);
