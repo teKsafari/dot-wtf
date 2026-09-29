@@ -15,7 +15,7 @@ export function getTekidConfig(
   environment: TekidEnvironment = env
 ): LogtoNextConfig {
   return {
-    endpoint: 'https://id.teksafari.org/',
+    endpoint: 'https://id.teksafari.com/',
     appId: environment.LOGTO_APP_ID,
     appSecret: environment.LOGTO_APP_SECRET,
     baseUrl: environment.LOGTO_BASE_URL,
