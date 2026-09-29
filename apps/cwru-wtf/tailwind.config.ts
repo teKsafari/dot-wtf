@@ -123,6 +123,7 @@ const config: Config = {
         edge: "hsl(var(--edge))",
         link: "hsl(var(--link))",
         success: "hsl(var(--success))",
+        "brand-accent": "hsl(var(--brand-accent))",
       },
       borderRadius: {
         lg: "var(--radius)",

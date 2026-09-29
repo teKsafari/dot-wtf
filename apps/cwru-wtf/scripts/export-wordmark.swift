@@ -3,7 +3,7 @@
 // Run from the application directory on macOS:
 //   swift scripts/export-wordmark.swift
 // Export the shared dot*WTF identity for tekID as rounded semibold outlines:
-// "dot", the burst mark as the asterisk, then "WTF", spaced like the site's Wordmark.
+// "dot", the orbit mark as the asterisk, then "WTF", spaced like the site's Wordmark.
 // No font file is bundled, embedded, or required to display the generated SVGs.
 
 import AppKit
@@ -102,13 +102,13 @@ let symbolX = advance("dot") + symbolMargin
 // Like CSS vertical-align: middle, center the mark on half the font's x-height.
 let symbolY = -font.xHeight / 2 - symbolSize / 2
 let lettering = shape("WTF", at: symbolX + symbolSize + symbolMargin)
-let symbolScale = symbolSize / 16
-// Exact visible bounds of BrandExpansionMark, including its rounded strokes.
+let symbolScale = symbolSize / 200
+// Exact visible bounds of BrandExpansionMark in its 200-unit viewBox.
 let symbolBounds = CGRect(
-    x: symbolX + 1.2 * symbolScale,
-    y: symbolY + 1.13 * symbolScale,
-    width: 13.61 * symbolScale,
-    height: 13.48 * symbolScale
+    x: symbolX + 24.3 * symbolScale,
+    y: symbolY + 14 * symbolScale,
+    width: 151.4 * symbolScale,
+    height: 172 * symbolScale
 )
 let bounds = prefix.boundingBoxOfPath.union(lettering.boundingBoxOfPath).union(symbolBounds)
 let offset = CGPoint(x: padding - bounds.minX, y: padding - bounds.minY)
@@ -119,30 +119,19 @@ let canvasHeight = height * displayHeight / contentHeight
 let canvasY = -(canvasHeight - height) / 2
 let letteringPath = svgPath(prefix, translatedBy: offset) + svgPath(lettering, translatedBy: offset)
 
-for (filename, color) in [
-    ("dot-wtf-wordmark.svg", "#1a1a1a"),
-    ("dot-wtf-wordmark-dark.svg", "#eeeeec"),
+for (filename, color, accent) in [
+    ("dot-wtf-wordmark.svg", "#1a1a1a", "#1e3a8a"),
+    ("dot-wtf-wordmark-dark.svg", "#eeeeec", "#819eee"),
 ] {
     let svg = """
     <svg xmlns="http://www.w3.org/2000/svg" width="\(number(displayWidth))" height="\(number(displayHeight))" viewBox="0 \(number(canvasY)) \(number(width)) \(number(canvasHeight))" role="img" aria-label="dot*WTF">
       <title>dot*WTF</title>
       <g fill="\(color)">
         <g transform="translate(\(number(symbolX + offset.x)) \(number(symbolY + offset.y))) scale(\(number(symbolScale)))">
-          <g transform="translate(3.25 2.82) scale(.62)">
-            <path d="M7.35 8.45 6.55 1.45M7.35 8.45l4.6-5.8M7.35 8.45l7-1.4M7.35 8.45l4.9 4.5M7.35 8.45l.37 6.05M7.35 8.45l-4.8 3.75M7.35 8.45l-5.9-.77" fill="none" stroke="\(color)" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.35"/>
-            <circle cx="7.35" cy="8.45" r="1.65"/>
-          </g>
-          <circle cx="8" cy="1.65" r=".52"/>
-          <circle cx="13.78" cy="5.36" r=".52"/>
-          <circle cx="14.29" cy="8.9" r=".52"/>
-          <circle cx="12.8" cy="12.16" r=".52"/>
-          <circle cx="9.79" cy="14.09" r=".52"/>
-          <circle cx="6.21" cy="14.09" r=".52"/>
-          <circle cx="3.2" cy="12.16" r=".52"/>
-          <circle cx="1.72" cy="8.9" r=".52"/>
-          <circle cx="2.22" cy="5.36" r=".52"/>
-          <circle cx="4.57" cy="2.66" r=".52"/>
-          <circle cx="14" cy="2.05" r=".7"/>
+          <circle cx="87.1" cy="76.8" r="62.8"/>
+          <circle cx="131.8" cy="160.9" r="25.1"/>
+          <circle cx="160" cy="121.9" r="15.7"/>
+          <circle cx="165.5" cy="89.9" r="9.4" fill="\(accent)"/>
         </g>
         <path d="\(letteringPath)"/>
       </g>

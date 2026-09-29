@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Burst">
+  <title>Burst</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="93.1" cy="99.8" r="23.8"/>
+    <circle cx="88.5" cy="59.4" r="10.9"/>
+    <circle cx="85.8" cy="35.7" r="6.9"/>
+    <circle cx="83.8" cy="18.5" r="4.5"/>
+    <circle cx="118.4" cy="67.9" r="10.9"/>
+    <circle cx="133.2" cy="49.3" r="6.9"/>
+    <circle cx="133" cy="91.8" r="10.9"/>
+    <circle cx="156.3" cy="87.2" r="6.9"/>
+    <circle cx="123" cy="127.3" r="10.9"/>
+    <circle cx="140.6" cy="143.4" r="6.9"/>
+    <circle cx="95.6" cy="140.4" r="10.9"/>
+    <circle cx="97" cy="164.2" r="6.9"/>
+    <circle cx="98.1" cy="181.5" r="4.5"/>
+    <circle cx="61" cy="124.9" r="10.9"/>
+    <circle cx="42.2" cy="139.5" r="6.9"/>
+    <circle cx="52.7" cy="94.5" r="10.9"/>
+    <circle cx="29.1" cy="91.5" r="6.9"/>
+  </g>
+  <circle cx="173.4" cy="83.8" r="4.5" fill="#ff5b1f"/>
+</svg>

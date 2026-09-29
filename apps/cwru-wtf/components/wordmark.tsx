@@ -1,6 +1,6 @@
 import BrandExpansionMark from "@/components/brand-expansion-mark"
 
-// The burst mark is the "*" in dot*WTF.
+// The orbit mark is the "*" in dot*WTF.
 export default function Wordmark() {
   return (
     <span aria-label="dot*WTF" className="whitespace-nowrap" role="img">

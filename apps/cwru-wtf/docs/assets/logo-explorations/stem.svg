@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Stem">
+  <title>Stem</title>
+  <rect width="200" height="200" rx="16" fill="#f3f0e9"/>
+  <g fill="#1a1a1a">
+    <circle cx="74.4" cy="123.6" r="60.4"/>
+    <circle cx="165" cy="163" r="21"/>
+    <circle cx="165" cy="116.4" r="16.4"/>
+    <circle cx="165" cy="78.3" r="12.5"/>
+    <circle cx="165" cy="47.5" r="9.2"/>
+  </g>
+  <circle cx="165" cy="22.5" r="6.6" fill="#ff5b1f"/>
+</svg>

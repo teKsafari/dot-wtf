@@ -100,13 +100,12 @@ html, body, #app, #app > div[class*="viewBox"] {
   height: 40px !important;
   margin: 0 !important;
 }
-/* Both configured logos have the same paths. Use charcoal on the light canvas. */
+/* The canvas is always light, so both logo fields hold the light wordmark.
+   No recolouring filter: it would turn the navy dot charcoal. */
 #app .logto_branding-header img[class*="logo"] {
   width: auto !important;
   height: 40px !important;
   object-fit: contain;
-  filter: brightness(0);
-  opacity: 0.9;
 }
 #app .logto_branding-header div[class*="headline"] {
   color: var(--wtf-ink) !important;
