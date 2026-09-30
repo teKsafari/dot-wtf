@@ -117,7 +117,7 @@ export default async function ProfilePage({ searchParams }: {
           <section aria-labelledby="profile-heading" className="w-full py-12 text-center">
             <DeskCat className="mx-auto mb-9 w-44 text-foreground/80" />
             <h1 id="profile-heading" className="font-brand text-page-title">Make yourself at home.</h1>
-            <p className="mx-auto mt-4 max-w-sm text-body text-muted-foreground">Create your profile, tell us what you want to build, and apply to join dot*WTF.</p>
+            <p className="mx-auto mt-4 max-w-sm text-body text-muted-foreground">Complete your profile, tell us what you are doing and discover other members exploring various ideas.</p>
             <form action={signInWithTekid} className="mt-7">
               <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in to get started</ProfileSubmitButton>
             </form>
