@@ -78,6 +78,8 @@ The tekID app logo uses the dot\*WTF wordmark assets in `public/dot-wtf-wordmark
 
 The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-sign-in.css](docs/tekid-sign-in.css). It uses the site's default light palette and rounded font stack, with charcoal `#1A1A1A` configured for both brand-color fields. At desktop widths, a warm-gray side panel shows the laptop cat from `https://dott.wtf/cat-pc.svg`, a vector trace of `public/cat-pc.png` that stays sharp at any size, and “create beyond the possible” At widths below 900px or heights below 560px, the decorative panel disappears so the form can use the whole screen. The illustration also shrinks with viewport height. The shared sign-in, registration, and recovery layouts retain their original controls and validation; the Google button stays above the email form. Nunito is loaded as the cross-platform fallback to SF Pro Rounded. App CSS replaces shared tekID CSS, so keep this copy in sync with the console. These settings apply only to the dot-wtf application.
 
+`pnpm sync:logto-branding` compares the dot-wtf app's logo fields, favicons, and CSS override in Logto with the files above, and changes nothing. With `--apply`, it writes the repository's versions, leaves every other sign-in experience setting as it was, and reads them back to confirm. It needs `LOGTO_APP_ID` and the operator-only Management API credentials, `LOGTO_MANAGEMENT_APP_ID` and `LOGTO_MANAGEMENT_APP_SECRET`.
+
 ## Member applications and directory
 
 Logto handles sign-in and identity claims. PostgreSQL owns the application, membership status, dashboard role, and unique member number. `/join` redirects to [/profile](http://dot-wtf.localhost:1355/profile); the Tally embed and both old intake routes are retired.
