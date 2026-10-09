@@ -1,4 +1,4 @@
-import { Nunito, Geist_Mono } from "next/font/google"
+import { Nunito, Geist_Mono, Space_Mono } from "next/font/google"
 
 /// One typeface everywhere: SF Pro Rounded.
 ///
@@ -18,4 +18,10 @@ export const fontMono = Geist_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-mono",
+})
+
+export const fontFooterMono = Space_Mono({
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
 })

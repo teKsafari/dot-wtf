@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import PeekCat from "@/components/peek-cat"
 import Wordmark from "@/components/wordmark"
+import { fontFooterMono } from "@/lib/fonts"
 
 const columns = [
   {
@@ -22,12 +23,10 @@ const columns = [
 ]
 
 const labelClassName =
-  "font-mono text-caption uppercase tracking-[0.2em] text-muted-foreground"
+  `${fontFooterMono.className} text-[13px] font-normal uppercase leading-[1.5] tracking-[0.12em] text-muted-foreground`
 
-// Display-size links that recede on hover, rather than small links that light
-// up: the footer is the one place the type gets to be loud.
 const linkClassName =
-  "group/link focus-ring inline-flex min-h-9 w-fit items-center gap-1 rounded-sm font-brand text-xl font-semibold leading-none tracking-[-0.02em] text-foreground transition-colors duration-150 hover:text-muted-foreground motion-reduce:transition-none md:text-2xl"
+  "group/link inline-flex min-h-9 w-fit items-center gap-1 rounded-sm font-nunito text-base font-normal leading-none text-foreground transition-colors duration-150 hover:text-muted-foreground motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-4 focus-visible:ring-offset-background"
 
 export default function SiteFooter() {
   return (
@@ -69,7 +68,7 @@ export default function SiteFooter() {
               </p>
               <ul
                 aria-labelledby={`footer-${column.label}`}
-                className="m-0 mt-4 flex list-none flex-col gap-1 p-0"
+                className="m-0 mt-3 flex list-none flex-col p-0"
               >
                 {column.links.map((link) => (
                   <li key={link.href}>
