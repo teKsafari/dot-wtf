@@ -2,6 +2,7 @@ import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
 
 const nonblank = z.string().refine((value) => value.trim().length > 0);
+const defaultTekidIssuer = 'https://auth.mules.wtf';
 const previewHostname = z.string().max(253).regex(
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
 ).refine((value) => !/\s/.test(value));
@@ -52,6 +53,9 @@ export function createApplicationEnv(runtimeEnvironment: Record<string, string |
       LOGTO_APP_SECRET: nonblank,
       LOGTO_BASE_URL: origin,
       LOGTO_COOKIE_SECRET: z.string().min(32).refine((value) => value.trim().length > 0),
+      // The tekID OpenID Connect issuer. Discovery, authorization, token, userinfo and
+      // end-session endpoints are read from its discovery document, never hard-coded.
+      TEKID_ISSUER: origin.default(defaultTekidIssuer),
       TALLY_FORM_ID: nonblank.optional(),
       TALLY_WEBHOOK_SECRET: nonblank.optional(),
       TALLY_FIELD_KEYS: z.string().optional(),

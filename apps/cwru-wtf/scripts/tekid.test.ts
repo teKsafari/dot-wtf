@@ -4,15 +4,22 @@ import test from 'node:test';
 
 import { createApplicationEnv } from '../lib/env-schema';
 import { getTekidConfig } from '../lib/tekid/config';
+import { tekidClaimsFromProfile } from '../lib/tekid/claims';
 import { getTekidAuthContextFromClaims, TekidProfileContractError } from '../lib/tekid/profile';
 import type { AuthContextType } from '../lib/tekid/types';
 
 test('config keeps the public origin and requests email for the session contract', () => {
   const local = getTekidConfig(createApplicationEnv(testEnvironment));
   assert.equal(local.baseUrl, 'http://dot-wtf.localhost:1355');
-  assert.equal(local.endpoint, 'https://id.teksafari.com/');
+  assert.equal(local.endpoint, 'https://auth.mules.wtf');
   assert.equal(local.cookieSecure, false);
-  assert.deepEqual(local.scopes, ['email']);
+  assert.deepEqual(local.scopes, ['openid', 'profile', 'email']);
+
+  const configured = getTekidConfig(createApplicationEnv({
+    ...testEnvironment,
+    TEKID_ISSUER: 'https://id.example.org/',
+  }));
+  assert.equal(configured.endpoint, 'https://id.example.org');
 
   const production = getTekidConfig(createApplicationEnv({
     ...testEnvironment,
@@ -181,4 +188,34 @@ test('contract errors identify the field without exposing profile values', () =>
     (error) => error instanceof TekidProfileContractError &&
       error.message.includes('name') && !error.message.includes('private-profile-value')
   );
+});
+
+test('claims map the provider profile onto the application contract', () => {
+  const idToken = { sub: 'member-subject', aud: 'test-app', iss: 'https://auth.mules.wtf' };
+  const userInfo = {
+    sub: 'member-subject',
+    name: 'Ada Lovelace',
+    preferred_username: 'ada',
+    email: 'ada@example.org',
+    email_verified: true,
+    picture: 'https://images.example.org/ada.png',
+    groups: ['organizers'],
+  };
+
+  assert.deepEqual(tekidClaimsFromProfile(idToken, userInfo), {
+    sub: 'member-subject',
+    name: 'Ada Lovelace',
+    username: 'ada',
+    email: 'ada@example.org',
+    email_verified: true,
+    picture: 'https://images.example.org/ada.png',
+  });
+
+  // The subject is the ID token's, never userinfo's, and an unassigned username is null.
+  const { preferred_username: _username, sub: _sub, ...withoutUsername } = userInfo;
+  assert.deepEqual(
+    tekidClaimsFromProfile(idToken, { ...withoutUsername, sub: 'other-subject' }).sub,
+    'member-subject'
+  );
+  assert.equal(tekidClaimsFromProfile(idToken, withoutUsername).username, null);
 });

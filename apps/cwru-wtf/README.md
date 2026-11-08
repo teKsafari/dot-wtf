@@ -51,7 +51,7 @@ Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` and the four `LOG
 
 [/profile](http://dot-wtf.localhost:1355/profile) starts a tekID sign-in or account creation flow and returns to the member's editable profile (see [Member applications and directory](#member-applications-and-directory)). tekID provides identity claims; the member edits their local application profile in PostgreSQL. [/admin](http://dot-wtf.localhost:1355/admin) uses the same tekID session; there is no separate admin password or login form. Approved local membership and a local dashboard role determine dashboard access.
 
-Use the **dot-wtf** Traditional web application in the tekID Logto console. Copy `LOGTO_APP_ID` and `LOGTO_APP_SECRET` into `.env.local`, set `LOGTO_BASE_URL`, and generate a separate `LOGTO_COOKIE_SECRET` of at least 32 characters (`openssl rand -hex 32`). These values are server-only; never prefix them with `NEXT_PUBLIC_` or commit secrets.
+tekID is an OpenID Connect provider. Register a confidential OIDC client for this app, copy its client id into `LOGTO_APP_ID` and its secret into `LOGTO_APP_SECRET`, set `LOGTO_BASE_URL` to this app's own origin, and generate a separate `LOGTO_COOKIE_SECRET` of at least 32 characters (`openssl rand -hex 32`). `TEKID_ISSUER` is the provider's issuer URL and defaults to `https://auth.mules.wtf`. These values are server-only; never prefix them with `NEXT_PUBLIC_` or commit secrets. The four `LOGTO_*` names are kept from the previous provider so that existing deployments, `turbo.json`, and the tests need no rename; `LOGTO_BASE_URL` has always been this application's origin, not the provider's.
 
 Register these exact URLs in that application:
 
@@ -60,7 +60,25 @@ Register these exact URLs in that application:
 | Local | `http://dot-wtf.localhost:1355/api/tekid/callback` | `http://dot-wtf.localhost:1355/profile` |
 | Production | `https://dott.wtf/api/tekid/callback` | `https://dott.wtf/profile` |
 
-Set `LOGTO_BASE_URL=https://dott.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. The sign-in SDK uses `https://id.teksafari.com/`, its standard `openid`, `profile`, and `offline_access` scopes, and the `email` scope required by the application session contract. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
+Set `LOGTO_BASE_URL=https://dott.wtf`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET` in the production deployment before releasing. Preview deployments need their own exact URLs registered. Sign-in requests the `openid`, `profile`, and `email` scopes; `email` and `name` are required by the application session contract.
+
+### How sign-in is implemented
+
+`lib/tekid` is the only code that talks to the provider, and it uses [`openid-client`](https://github.com/panva/openid-client) against the discovery document at `TEKID_ISSUER` + `/.well-known/openid-configuration`. Nothing is hard-coded except that path: the authorization, token, userinfo, and end-session endpoints all come from discovery.
+
+| File | Responsibility |
+| --- | --- |
+| `lib/tekid/config.ts` | The validated settings: issuer, client id and secret, this app's origin, cookie secret, scopes. |
+| `lib/tekid/provider.ts` | One cached discovery per issuer and client. A failed discovery is not cached. |
+| `lib/tekid/sign-in.ts` | Starts the authorization code flow with PKCE (S256), `state`, and `nonce`. |
+| `lib/tekid/session.ts` | The sign-in handshake and the session, each an encrypted (`A256GCM`) cookie keyed by `LOGTO_COOKIE_SECRET`. A cookie that will not decrypt counts as absent. |
+| `lib/tekid/claims.ts` | Maps the provider's profile onto the application contract. The subject always comes from the ID token; `preferred_username` becomes the optional `username`. |
+| `lib/tekid/server.ts` | Reads the session cookie and returns `AuthContextType`. |
+| `lib/tekid/sign-out.ts` | Clears the session, then redirects to the provider's end-session endpoint with `id_token_hint`. |
+
+The session cookie holds the validated profile claims and the ID token, and lasts fourteen days. The application never stores the access token and never calls a provider management API: identity comes from the ID token and userinfo, and every membership and role decision is read from PostgreSQL.
+
+The previous provider was Logto, through `@logto/next`. That SDK cannot be pointed at a standards-only provider: its discovery path is the hard-coded constant `/oidc/.well-known/openid-configuration` in `@logto/js`, and its sign-out destructures a `revocationEndpoint` that a provider need not advertise. Membership status and roles are read from local PostgreSQL; neither Logto organization data nor token role claims authorize site access.
 
 For Vercel Preview deployments, set the required application credentials (`LOGTO_APP_ID`, `LOGTO_APP_SECRET`, and `LOGTO_COOKIE_SECRET`) for **all Preview branches**, along with the database setting. Management API credentials and organization role IDs are not runtime configuration. A value scoped to one branch does not configure future branches. Keep the cookie secret consistent across deployments of a branch so existing sessions remain readable.
 
@@ -122,3 +140,11 @@ Validate with `pnpm test:env`, `pnpm test:tekid`, `pnpm test:admin`, `pnpm test:
 ---
 
 **Join us:** Visit [dott.wtf](https://dott.wtf) to get started.
+
+## Container deployment
+
+The repository root `Dockerfile` builds this app for a container host. It is a three-stage build on a pinned `node:22.23.4-alpine`: install the workspace with the committed lockfile, run `next build`, then start from the built tree.
+
+`next.config.mjs` validates the environment before it builds, so the build stage sets placeholder values for the required variables. That is safe because no page reads the database or a session at build time -- every such route is server-rendered on demand -- and it keeps real secrets out of the image's build arguments. The real values come from the runtime environment.
+
+The container's command is `pnpm db:migrate && pnpm start`. `drizzle-kit migrate` applies only the migrations missing from its journal table, so starting an unchanged release is a no-op and a restarted container never re-applies one. Set `DATABASE_URL`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, `LOGTO_BASE_URL`, `LOGTO_COOKIE_SECRET`, and, when the provider is not the default, `TEKID_ISSUER`. The server listens on `PORT` (3000 by default).

@@ -1,7 +1,6 @@
 'use server';
 
-import { signOut } from '@logto/next/server-actions';
-import { redirect, unstable_rethrow } from 'next/navigation';
+import { unstable_rethrow } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -12,26 +11,17 @@ import {
   type ProfileFormState,
 } from '@/lib/member-profile-fields';
 import { ProfileSubmissionError, saveMemberProfile } from '@/lib/member-profiles';
-import {
-  getTekidConfig,
-  tekidProfilePath,
-} from '@/lib/tekid/config';
+import { tekidProfilePath } from '@/lib/tekid/config';
 import { getTekidAuthContext } from '@/lib/tekid/server';
 import { beginTekidSignIn } from '@/lib/tekid/sign-in';
+import { endTekidSession } from '@/lib/tekid/sign-out';
 
 export async function signInWithTekid(): Promise<void> {
   await beginTekidSignIn(tekidProfilePath);
 }
 
 export async function signOutFromTekid(): Promise<void> {
-  const config = getTekidConfig();
-
-  try {
-    await signOut(config, new URL(tekidProfilePath, config.baseUrl).href);
-  } catch (error) {
-    unstable_rethrow(error);
-    redirect(`${tekidProfilePath}?error=sign-out`);
-  }
+  await endTekidSession(tekidProfilePath);
 }
 
 export async function saveProfile(
