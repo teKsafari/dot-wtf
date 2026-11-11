@@ -56,6 +56,20 @@ export function createApplicationEnv(runtimeEnvironment: Record<string, string |
       // The tekID OpenID Connect issuer. Discovery, authorization, token, userinfo and
       // end-session endpoints are read from its discovery document, never hard-coded.
       TEKID_ISSUER: origin.default(defaultTekidIssuer),
+      // tekID admin API key. Approval creates the applicant's tekID account with it.
+      // Optional so a build or a read-only deployment starts without it; approval
+      // reports that review is unavailable rather than half-approving somebody.
+      TEKID_API_KEY: nonblank.optional(),
+      // Approved members join this tekID group, so another club service can
+      // authorize on the groups claim instead of asking this database.
+      TEKID_MEMBER_GROUP: nonblank.default('members'),
+      // Lifetime of the one-time sign-in link shown to the reviewer after approval.
+      TEKID_LINK_TTL: z.string().regex(/^[1-9][0-9]{0,3}[smhd]$/).default('12h'),
+      // Where application photos are written. A bind mount in the container; a
+      // local directory in development. Swapping to object storage replaces the
+      // driver in lib/uploads.ts, not this path's callers.
+      UPLOADS_DIR: nonblank.default('./.uploads'),
+      UPLOADS_MAX_BYTES: z.coerce.number().int().min(1).max(50_000_000).default(5_000_000),
       TALLY_FORM_ID: nonblank.optional(),
       TALLY_WEBHOOK_SECRET: nonblank.optional(),
       TALLY_FIELD_KEYS: z.string().optional(),

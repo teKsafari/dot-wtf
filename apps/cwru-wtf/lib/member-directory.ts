@@ -1,8 +1,8 @@
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { memberships, profiles, users } from './schema';
-import type { MemberRecordDatabase } from './member-records';
+import { linkedIdentity, type MemberRecordDatabase } from './member-records';
 import { safeSocialLinks } from './member-profile-fields';
 import { safeMemberPicture, type DirectoryMember, type MemberStatus } from './member-types';
 import type { AuthContextType } from './tekid/types';
@@ -49,13 +49,13 @@ export function loadDirectoryRecords(database: MemberRecordDatabase): PromiseLik
   // Membership authorizes the viewer even before a profile exists. Only actual
   // profiles become directory entries, using the same database snapshot.
   return database.select({
-    id: users.tekidUserId, name: profiles.name,
+    id: sql<string>`${users.tekidUserId}`, name: profiles.name,
     picture: profiles.picture, bio: profiles.bio,
     socialLinks: profiles.socialLinks, memberNumber: memberships.memberNumber,
     status: memberships.status, hasProfile: sql<boolean>`${profiles.userId} is not null`,
   }).from(users).innerJoin(memberships, eq(memberships.userId, users.id))
     .leftJoin(profiles, eq(profiles.userId, users.id))
-    .where(eq(memberships.status, 'approved'));
+    .where(and(eq(memberships.status, 'approved'), linkedIdentity));
 }
 
 export async function getMemberDirectory(): Promise<MemberDirectory> {

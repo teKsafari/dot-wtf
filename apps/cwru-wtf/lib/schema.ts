@@ -29,9 +29,11 @@ export const actionLogs = pgTable('action_logs', {
 });
 
 // Logto authenticates the identity; all application relationships use local UUIDs.
+// tekid_user_id is null for a public applicant: approval creates the tekID account
+// and writes its subject here, so the identity is an output of review, not its input.
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tekidUserId: text('tekid_user_id').notNull().unique(),
+  tekidUserId: text('tekid_user_id').unique(),
   email: text('email').notNull().default(''),
   emailVerified: boolean('email_verified').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
