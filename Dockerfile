@@ -20,12 +20,27 @@ ENV NODE_ENV=production \
 RUN pnpm --filter cwru-wtf build
 
 FROM base AS runner
+# setpriv drops privileges without a shell between it and the server; su is the
+# fallback in entrypoint.sh if the package is ever missing.
+RUN apk add --no-cache setpriv
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    UPLOADS_DIR=/data/uploads
 COPY --from=build /app /app
+# The mount's directory, owned by the user that writes it. A bind mount replaces
+# this ownership at runtime, which is what entrypoint.sh repairs.
+RUN mkdir -p /data/uploads && chown -R node:node /data /app/apps/cwru-wtf/.next
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 WORKDIR /app/apps/cwru-wtf
 EXPOSE 3000
+# Stays root only long enough to chown the bind mount; entrypoint.sh drops to
+# node before the migration or the server runs.
+# node must own corepack's cache, or pnpm fails with EACCES after the drop.
+ENV COREPACK_HOME=/home/node/.cache/node/corepack
+RUN mkdir -p /home/node/.cache/node/corepack && chown -R node:node /home/node/.cache
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # drizzle-kit applies only the migrations missing from its journal table, so starting an
 # unchanged release is a no-op and a restarted container never re-runs a migration.
 CMD ["sh", "-c", "pnpm db:migrate && exec pnpm start"]

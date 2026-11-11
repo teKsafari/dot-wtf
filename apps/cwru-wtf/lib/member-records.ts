@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, isNotNull, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from './schema';
 import { memberships, profiles, users } from './schema';
@@ -9,7 +9,10 @@ import { memberships, profiles, users } from './schema';
 export const memberRecordSelection = {
   userId: users.id,
   membershipId: memberships.id,
-  tekidUserId: users.tekidUserId,
+  // Every query built on these selections is restricted to a linked identity,
+  // either by matching the subject or by an explicit is-not-null. A public
+  // applicant has no subject yet and is reviewed through lib/applications.ts.
+  tekidUserId: sql<string>`${users.tekidUserId}`,
   email: users.email,
   emailVerified: users.emailVerified,
   name: profiles.name,
@@ -35,11 +38,14 @@ export const memberRecordSelection = {
 };
 
 export type MemberRecord =
-  Pick<typeof users.$inferSelect, 'tekidUserId' | 'email' | 'emailVerified'> &
+  Pick<typeof users.$inferSelect, 'email' | 'emailVerified'> & { tekidUserId: string } &
   Omit<typeof profiles.$inferSelect, 'userId' | 'createdAt' | 'updatedAt'> &
   Omit<typeof memberships.$inferSelect, 'id'> & { membershipId: string };
 
 export type MemberRecordDatabase = Pick<PostgresJsDatabase<typeof schema>, 'select'>;
+
+// Applications waiting for review have no subject; they are not members yet.
+export const linkedIdentity = isNotNull(users.tekidUserId);
 
 export function selectMemberRecords(database: MemberRecordDatabase) {
   return database.select(memberRecordSelection).from(users)

@@ -47,6 +47,7 @@ export default function SiteFooter() {
           >
             <Wordmark />
           </Link>
+          {/* Hidden for now at the owner's request; uncomment to restore.
           <p className="mt-3 font-brand text-base italic text-muted-foreground">
             Powered by{" "}
             <a
@@ -58,6 +59,7 @@ export default function SiteFooter() {
               teKsafari
             </a>
           </p>
+          */}
         </div>
 
         <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:flex md:gap-24">

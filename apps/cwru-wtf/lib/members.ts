@@ -5,7 +5,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { z } from 'zod';
 import * as schema from './schema';
 import { memberAuditLogs, memberships, users } from './schema';
-import { findMemberAccessByTekidId, findManagementMemberRecordByTekidId, selectManagementMemberRecords, type MemberRecord } from './member-records';
+import { findMemberAccessByTekidId, findManagementMemberRecordByTekidId, linkedIdentity, selectManagementMemberRecords, type MemberRecord } from './member-records';
 import { applicationFieldsSchema, safeSocialLinks } from './member-profile-fields';
 import {
   assertDashboardPermission, AuthorizationError, dashboardContextForMember,
@@ -296,7 +296,7 @@ export function createDatabaseMemberStore(database: MembershipDatabase): MemberS
         },
         async listMembers(page, status) {
           return selectManagementMemberRecords(transaction)
-            .where(status === 'all' ? undefined : eq(memberships.status, status))
+            .where(status === 'all' ? linkedIdentity : and(linkedIdentity, eq(memberships.status, status)))
             .orderBy(desc(memberships.submittedAt), desc(memberships.createdAt), asc(users.tekidUserId))
             .limit(pageSize + 1).offset((page - 1) * pageSize);
         },

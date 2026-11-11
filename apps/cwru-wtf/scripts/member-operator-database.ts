@@ -53,7 +53,8 @@ export async function importLegacyMembers(database: MembershipDatabase, input: {
       .from(users).leftJoin(profiles, eq(profiles.userId, users.id))
       .leftJoin(memberships, eq(memberships.userId, users.id)).where(inArray(users.tekidUserId, ids));
     const existingProfiles = rows.map(({ user, profile, membership }) => ({
-      tekidUserId: user.tekidUserId, name: profile?.name ?? '', email: user.email, emailVerified: user.emailVerified,
+      // Matched by inArray on the subject, so every row here is a linked identity.
+      tekidUserId: user.tekidUserId!, name: profile?.name ?? '', email: user.email, emailVerified: user.emailVerified,
       role: membership?.role ?? 'member' as const, status: membership?.status ?? 'draft' as const,
       memberNumber: membership?.memberNumber ?? null, approvedAt: membership?.approvedAt ?? null,
       reviewedAt: membership?.reviewedAt ?? null, reviewedBy: membership?.reviewedBy ?? null,

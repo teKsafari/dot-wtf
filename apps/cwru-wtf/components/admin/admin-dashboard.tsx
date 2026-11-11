@@ -34,6 +34,10 @@ const MemberManagement = dynamic(() => import("./member-management"), {
   loading: () => <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading members…</p>,
 });
 
+const ApplicationQueue = dynamic(() => import("./application-queue"), {
+  loading: () => <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading the queue…</p>,
+});
+
 export interface AdminSubmission {
   id: number;
   name: string;
@@ -96,7 +100,8 @@ export default function AdminDashboard({
   admin,
   initialSubmissions,
 }: AdminDashboardProps) {
-  const [activeView, setActiveView] = useState<"history" | "members">(admin.canReadMembers ? "members" : "history");
+  const [activeView, setActiveView] = useState<"applications" | "history" | "members">(
+    admin.canReviewMembers ? "applications" : admin.canReadMembers ? "members" : "history");
   const [submissions, setSubmissions] =
     useState<AdminSubmission[]>(initialSubmissions);
   const [filter, setFilter] = useState<SubmissionFilter>("pending");
@@ -383,7 +388,9 @@ export default function AdminDashboard({
           </div>
         </div>
         <nav aria-label="Dashboard sections" className="mx-auto flex max-w-[1440px] gap-6 px-4 sm:px-6 lg:px-8">
-          {(["members", "history"] as const).filter((view) => view !== "members" || admin.canReadMembers).map((view) => (
+          {(["applications", "members", "history"] as const)
+            .filter((view) => (view === "applications" ? admin.canReviewMembers : view === "members" ? admin.canReadMembers : true))
+            .map((view) => (
             <button
               key={view}
               type="button"
@@ -394,7 +401,7 @@ export default function AdminDashboard({
                 activeView === view ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {view === "members" ? "Applications & members" : "Historical applications"}
+              {view === "applications" ? "Review queue" : view === "members" ? "Members" : "Historical applications"}
             </button>
           ))}
         </nav>
@@ -405,7 +412,9 @@ export default function AdminDashboard({
         tabIndex={-1}
         className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col outline-none lg:px-8"
       >
-        {activeView === "members" ? (
+        {activeView === "applications" ? (
+          <ApplicationQueue canReview={admin.canReviewMembers} />
+        ) : activeView === "members" ? (
           <MemberManagement canAssignRoles={admin.canAssignRoles} canReview={admin.canReviewMembers} canRenumber={admin.canRenumberMembers} />
         ) : <>
         <div
