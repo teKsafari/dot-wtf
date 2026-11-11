@@ -27,7 +27,7 @@ export type LocalMemberAccess = { status: MemberStatus; role: MemberRole };
 export class AuthorizationError extends Error {
   constructor(public readonly status: 401 | 403 | 503, message?: string) {
     super(message ?? {
-      401: 'Sign in with tekID to continue.',
+      401: 'Sign in to continue.',
       403: 'You do not have permission to perform this action.',
       503: 'Membership permissions are temporarily unavailable. Please try again.',
     }[status]);
@@ -80,7 +80,7 @@ export function createDashboardAuthorization(dependencies: {
       context = await getDashboardAuthContext();
     } catch (error) {
       if (error instanceof TekidProfileContractError) {
-        throw new AuthorizationError(403, 'Complete your tekID profile before using the dashboard.');
+        throw new AuthorizationError(403, 'Complete your club account profile before using the dashboard.');
       }
       throw error;
     }

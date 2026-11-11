@@ -25,7 +25,7 @@ if (testUrl) {
 }
 
 const claims = (overrides: Partial<AuthSession> = {}): AuthSession => ({
-  sub: 'ada', name: 'Ada from tekID', username: null, email: 'Ada@Example.org',
+  sub: 'ada', name: 'Ada from the club account', username: null, email: 'Ada@Example.org',
   email_verified: true, picture: 'https://images.example.org/ada.png', ...overrides,
 });
 const completeFields = (overrides: Partial<ProfileFields> = {}): ProfileFields => ({
@@ -210,7 +210,7 @@ describe('local profile persistence', { skip: !testUrl, concurrency: false }, ()
   it('an intentionally cleared draft name stays blank when identity details refresh', async () => {
     await profiles.saveProfile(claims(), completeFields());
     await profiles.saveProfile(claims(), completeFields({ name: '' }));
-    const view = await profiles.getProfile(claims({ name: 'A changed tekID name' }));
+    const view = await profiles.getProfile(claims({ name: 'A changed club account name' }));
     assert.equal(view.fields.name, '');
     assert.equal((await readProfile()).name, '');
   });

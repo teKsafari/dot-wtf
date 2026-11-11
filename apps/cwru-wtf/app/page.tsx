@@ -38,9 +38,9 @@ export default function Home() {
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Button asChild size="xl">
-            {/* A visitor has no account yet, so the front door is the public
-                application, not the sign-in behind /profile. */}
-            <Link href="/join">
+            {/* A visitor has no account yet. /profile is the membership form
+                itself for them, not a sign-in wall. */}
+            <Link href="/profile">
               Get started
               <ArrowRight className="h-4 w-4" />
             </Link>

@@ -81,6 +81,7 @@ describe('public application Postgres integration', { skip: !testUrl }, () => {
     return createApplicationService({
       store, uploads,
       tekid: () => tekidClient(overrides),
+      allowedEmailDomains: ['example.org'],
       memberGroup: 'members', linkTtl: '12h', maximumUploadBytes: 5_000_000,
       photoUrl: (key) => `https://mules.wtf/api/uploads/${key}`,
       photoKey: (url) => url.split('/').pop() ?? null,
@@ -149,12 +150,12 @@ describe('public application Postgres integration', { skip: !testUrl }, () => {
     assert.deepEqual(audits.map((entry) => entry.action), ['member.approve-application']);
   });
 
-  test('a tekID failure after the account exists rolls the row back and removes the account', async () => {
+  test('an identity-service failure after the account exists rolls the row back and removes the account', async () => {
     const application = await submit();
     await assert.rejects(
       service({
         async createUser() { return { id: 'tekid-orphan', username: 'ada', email: 'ada@example.org' }; },
-        async createOneTimeAccessToken() { throw new TekidAdminError(500, null, 'tekID rejected the request (500).'); },
+        async createOneTimeAccessToken() { throw new TekidAdminError(500, null, 'The club identity service rejected the request (500).'); },
       }).approve(application.userId, 'admin-sub'),
       (error: unknown) => error instanceof ApplicationError && error.status === 503
     );

@@ -157,13 +157,14 @@ function createFakeTekid(overrides: Partial<TekidAdminClient> = {}) {
   return { calls, client };
 }
 
-function createService(options: { tekid?: Partial<TekidAdminClient> } = {}) {
+function createService(options: { tekid?: Partial<TekidAdminClient>; domains?: string[] } = {}) {
   const { state, store } = createMemoryStore();
   const { files, uploads } = createMemoryUploads();
   const tekid = createFakeTekid(options.tekid);
   const service = createApplicationService({
     store, uploads,
     tekid: () => tekid.client,
+    allowedEmailDomains: options.domains ?? ['example.org'],
     memberGroup: 'members',
     linkTtl: '12h',
     maximumUploadBytes: 5_000_000,
@@ -248,6 +249,75 @@ test('a file that is not an image, and an incomplete form, are reported per fiel
   assert.equal(files.size, 0);
 });
 
+test('an address outside the school domains is refused, and nothing is stored', async () => {
+  const { service, state, files } = createService({ domains: ['colby.edu'] });
+  await assert.rejects(
+    service.submit({
+      email: 'ada@gmail.com', fields: completeFields(), photo: photo(),
+      honeypot: '', clientAddress: '198.51.100.21',
+    }),
+    (error: unknown) => error instanceof ApplicationError && error.status === 400
+      // The message names what would be accepted instead.
+      && /@colby\.edu/.test(error.errors.email ?? '')
+  );
+  assert.equal(state.records.length, 0);
+  assert.equal(files.size, 0);
+});
+
+test('a school address, including a subdomain of one, lands as pending', async () => {
+  for (const email of ['ada@colby.edu', 'grace@CS.Colby.edu']) {
+    const { service, state } = createService({ domains: ['colby.edu'] });
+    const view = await service.submit({
+      email, fields: completeFields(), photo: photo(),
+      honeypot: '', clientAddress: '198.51.100.22',
+    });
+    assert.equal(view.status, 'pending');
+    assert.equal(view.memberNumber, null);
+    assert.equal(state.records[0]!.email, email.toLowerCase());
+  }
+});
+
+test('an empty domain list accepts nobody rather than everybody', async () => {
+  const { service, state, files } = createService({ domains: [] });
+  await assert.rejects(
+    service.submit({
+      email: 'ada@colby.edu', fields: completeFields(), photo: photo(),
+      honeypot: '', clientAddress: '198.51.100.23',
+    }),
+    (error: unknown) => error instanceof ApplicationError && error.status === 400
+      && Boolean(error.errors.email)
+  );
+  assert.equal(state.records.length, 0);
+  assert.equal(files.size, 0);
+});
+
+// The club's first admin joined before the rule existed, on the club's own
+// domain rather than the school's. The rule guards new applications only, so
+// their record keeps working and their own profile edits never reach this path
+// (a member's address comes from their Club ID; the form cannot change it).
+test('an approved member on a domain the rule no longer accepts keeps their membership', async () => {
+  const { service, state } = createService({ domains: ['example.org'] });
+  await service.submit({
+    email: 'founder@example.org', fields: completeFields(), photo: photo(),
+    honeypot: '', clientAddress: '198.51.100.24',
+  });
+  const grandfathered = state.records[0]!;
+  // The live row: member #1, admin, on a domain the allowlist does not hold.
+  grandfathered.email = 'nehemia@mules.wtf';
+
+  const approved = await service.approve(grandfathered.userId, 'bootstrap');
+  assert.equal(approved.application.status, 'approved');
+  assert.equal(approved.application.memberNumber, 1);
+  assert.equal(approved.application.email, 'nehemia@mules.wtf');
+
+  // Everything a reviewer can still do for that member works with the rule on.
+  const link = await service.remintSignInLink(grandfathered.userId, 'bootstrap');
+  assert.match(link.url, /^https:\/\/auth\.mules\.wtf\/lc\//);
+  const queue = await service.listQueue();
+  assert.equal(queue.pending.length, 0);
+  assert.equal(queue.recentlyApproved[0]!.email, 'nehemia@mules.wtf');
+});
+
 test('the same email cannot apply twice, and the second photo is not kept', async () => {
   const { service, state, files } = createService();
   await submitOne(service);
@@ -257,7 +327,7 @@ test('the same email cannot apply twice, and the second photo is not kept', asyn
   assert.equal(files.size, 1);
 });
 
-test('approval creates the tekID account, the member number and the sign-in link together', async () => {
+test('approval creates the club account, the member number and the sign-in link together', async () => {
   const { service, state, tekid } = createService();
   const application = await submitOne(service);
 
@@ -280,11 +350,11 @@ test('approval creates the tekID account, the member number and the sign-in link
   assert.deepEqual(queue.recentlyApproved.map((entry) => entry.memberNumber), [1]);
 });
 
-test('a tekID failure leaves the application pending, with no number and no log', async () => {
+test('an identity-service failure leaves the application pending, with no number and no log', async () => {
   const { service, state, tekid } = createService({
     tekid: {
       async createUser() {
-        throw new TekidAdminError(503, null, 'tekID did not answer.');
+        throw new TekidAdminError(503, null, 'The club identity service did not answer.');
       },
     },
   });
@@ -305,7 +375,7 @@ test('a failure after the account exists rolls the record back and deletes that 
   const { service, state, tekid } = createService({
     tekid: {
       async createOneTimeAccessToken() {
-        throw new TekidAdminError(500, null, 'tekID rejected the request (500).');
+        throw new TekidAdminError(500, null, 'The club identity service rejected the request (500).');
       },
     },
   });
@@ -322,11 +392,11 @@ test('a failure after the account exists rolls the record back and deletes that 
   assert.equal(((await service.listQueue()).pending).length, 1);
 });
 
-test('an email tekID already holds is reported as a conflict, not a half approval', async () => {
+test('an email the identity service already holds is reported as a conflict, not a half approval', async () => {
   const { service, state } = createService({
     tekid: {
       async createUser() {
-        throw new TekidAdminError(409, 'already_in_use', 'tekID rejected the request (409).');
+        throw new TekidAdminError(409, 'already_in_use', 'The club identity service rejected the request (409).');
       },
     },
   });

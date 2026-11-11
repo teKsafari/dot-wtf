@@ -36,10 +36,11 @@ export function getApplicationService() {
     tekid() {
       if (!env.TEKID_API_KEY) {
         // Approval would otherwise write 'approved' with no credential behind it.
-        throw new ApplicationError(503, 'tekID admin access is not configured, so nothing can be approved yet.');
+        throw new ApplicationError(503, 'Club ID admin access is not configured, so nothing can be approved yet.');
       }
       return createTekidAdminClient({ baseUrl: env.TEKID_ISSUER, apiKey: env.TEKID_API_KEY });
     },
+    allowedEmailDomains: env.MEMBER_EMAIL_DOMAINS,
     memberGroup: env.TEKID_MEMBER_GROUP,
     linkTtl: env.TEKID_LINK_TTL,
     maximumUploadBytes: env.UPLOADS_MAX_BYTES,

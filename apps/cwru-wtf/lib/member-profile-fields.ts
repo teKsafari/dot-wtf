@@ -188,12 +188,18 @@ export function safeSocialLinks(value: unknown): SocialLinks {
   return links;
 }
 
+// One form serves a signed-in member and a stranger applying for membership, so
+// one state shape covers both. 'submitted' is the applicant's end state; a
+// member who saves gets 'saved'. email and photo only ever carry an applicant's
+// errors: a member's address comes from their Club ID and is not editable here.
 export interface ProfileFormState {
-  status: 'idle' | 'saved' | 'invalid' | 'error';
+  status: 'idle' | 'saved' | 'submitted' | 'invalid' | 'error';
   // The form re-renders from these after every submission, so rejected input is never lost.
   fields: ProfileFields;
+  // What the applicant typed, kept so a rejected form comes back filled in.
+  email?: string;
   applicationStatus?: ApplicationStatus;
   memberNumber?: number | null;
-  errors?: Partial<Record<ProfileField, string>>;
+  errors?: Partial<Record<ProfileField | 'email' | 'photo', string>>;
   message?: string;
 }

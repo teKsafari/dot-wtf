@@ -1,6 +1,8 @@
 import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
 
+import { defaultMemberEmailDomains, parseEmailDomains } from './email-domains';
+
 const nonblank = z.string().refine((value) => value.trim().length > 0);
 const defaultTekidIssuer = 'https://auth.mules.wtf';
 const previewHostname = z.string().max(253).regex(
@@ -68,6 +70,15 @@ export function createApplicationEnv(runtimeEnvironment: Record<string, string |
       // Where application photos are written. A bind mount in the container; a
       // local directory in development. Swapping to object storage replaces the
       // driver in lib/uploads.ts, not this path's callers.
+      // Email domains a membership application may use, comma separated. The
+      // club has no mailbox, so the domain is the only evidence an applicant is
+      // a student; this repository is shared, so each deployment sets its own.
+      // A value that holds no usable domain fails startup rather than quietly
+      // accepting every address in the world.
+      MEMBER_EMAIL_DOMAINS: z.string().default(defaultMemberEmailDomains)
+        .transform(parseEmailDomains)
+        .refine((domains) => domains.length > 0,
+          'Needs at least one email domain, like colby.edu'),
       UPLOADS_DIR: nonblank.default('./.uploads'),
       UPLOADS_MAX_BYTES: z.coerce.number().int().min(1).max(50_000_000).default(5_000_000),
       TALLY_FORM_ID: nonblank.optional(),

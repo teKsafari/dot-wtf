@@ -3,14 +3,14 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import Wordmark from "@/components/wordmark"
-import DeskCat from "@/components/desk-cat"
+import { env } from "@/env"
 import { getMemberProfile } from "@/lib/member-profiles"
 import { tekidMembersPath, tekidProfilePath } from "@/lib/tekid/config"
 import { getDashboardAuthContext, AuthorizationError } from "@/lib/authorization"
 import { TekidProfileContractError } from "@/lib/tekid/profile"
 import { getTekidAuthContext } from "@/lib/tekid/server"
 import { signInWithTekid, signOutFromTekid } from "./actions"
-import { ProfileAvatar, ProfileForm, ProfileSubmitButton } from "./profile-controls"
+import { ApplicationForm, ProfileAvatar, ProfileForm, ProfileSubmitButton } from "./profile-controls"
 
 export const metadata: Metadata = {
   title: "Your profile - dot*WTF",
@@ -19,6 +19,10 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
+// This is the club's only membership form. A stranger fills it in with no
+// account at all: the club account is minted when an admin approves them, so
+// requiring a sign-in here would be asking for the thing this page produces.
+// A member who is signed in gets the same questions, already filled in.
 export default async function ProfilePage({ searchParams }: {
   searchParams: Promise<{ error?: string | string[] }>
 }) {
@@ -44,6 +48,8 @@ export default async function ProfilePage({ searchParams }: {
     : params.error === "sign-out"
       ? "We couldn’t complete your sign-out. Please try again."
       : null
+  // The club's own identity server, whatever this deployment points at.
+  const clubAccountUrl = env.TEKID_ISSUER
 
   return (
     <div className="flex min-h-[100svh] flex-col bg-background text-foreground">
@@ -51,21 +57,25 @@ export default async function ProfilePage({ searchParams }: {
         <Link href="/" aria-label="dot*WTF home" className="focus-ring inline-flex min-h-11 items-center rounded-lg font-brand text-lg font-semibold">
           <Wordmark />
         </Link>
-        <Link href="/" className={secondaryLinkClassName}>Back home</Link>
+        {signedIn || auth instanceof TekidProfileContractError ? (
+          <Link href="/" className={secondaryLinkClassName}>Back home</Link>
+        ) : (
+          <a href={`/api/tekid/sign-in?returnTo=${tekidProfilePath}`} className={secondaryLinkClassName}>Already a member? Sign in</a>
+        )}
       </header>
 
-      <main className={`mx-auto w-full flex-1 px-6 pb-20 sm:pb-28 ${signedIn ? "max-w-[1100px] pt-6 sm:pt-10" : "flex max-w-lg items-center justify-center"}`}>
+      <main className={`mx-auto w-full flex-1 px-6 pb-20 sm:pb-28 ${signedIn ? "max-w-[1100px] pt-6 sm:pt-10" : "max-w-[640px] pt-4 sm:pt-8"}`}>
         {auth instanceof TekidProfileContractError ? (
-          <section aria-labelledby="profile-heading" className="w-full max-w-sm py-12 text-center">
+          <section aria-labelledby="profile-heading" className="mx-auto w-full max-w-sm py-12 text-center">
             <h1 id="profile-heading" className="font-brand text-3xl font-semibold tracking-tight">Your account needs attention</h1>
             <p role="alert" className="mt-3 text-sm leading-relaxed text-muted-foreground">
               {auth.field === "email"
-                ? "Add a valid email address to your tekID account, then sign in again."
-                : "We couldn’t load your sign-in details. Check your tekID account, then sign in again."}
+                ? "Add a valid email address to your club account, then sign in again."
+                : "We couldn’t load your sign-in details. Check your club account, then sign in again."}
             </p>
-            <a href="https://id.teksafari.com/account/security" target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open tekID account</a>
+            <a href={clubAccountUrl} target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open your club account</a>
             <form action={signInWithTekid} className="mt-7">
-              <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in again</ProfileSubmitButton>
+              <ProfileSubmitButton pendingLabel="Taking you to sign-in…">Sign in again</ProfileSubmitButton>
             </form>
             <form action={signOutFromTekid} className="mt-3">
               <ProfileSubmitButton pendingLabel="Signing out…" variant="outline">Sign out</ProfileSubmitButton>
@@ -85,7 +95,7 @@ export default async function ProfilePage({ searchParams }: {
                 {profile?.status === "approved" ? <Link href={tekidMembersPath} className={secondaryLinkClassName}>Member directory</Link> : null}
                 <Suspense fallback={null}><DashboardLink /></Suspense>
               </nav>
-              <p className="mt-5 text-xs leading-relaxed text-muted-foreground">Your name and application live here.<br />tekID handles your sign-in.</p>
+              <p className="mt-5 text-xs leading-relaxed text-muted-foreground">Your name and application live here.<br />Your Club ID handles your sign-in.</p>
               <form action={signOutFromTekid} className="mt-6">
                 <ProfileSubmitButton pendingLabel="Signing out…" variant="outline">Sign out</ProfileSubmitButton>
               </form>
@@ -103,6 +113,7 @@ export default async function ProfilePage({ searchParams }: {
                     emailVerified={auth.claims.email_verified}
                     memberNumber={profile.memberNumber}
                     submittedAt={profile.submittedAt}
+                    clubIdAccountUrl={clubAccountUrl}
                   />
                 </>
               ) : (
@@ -114,14 +125,15 @@ export default async function ProfilePage({ searchParams }: {
             </section>
           </div>
         ) : (
-          <section aria-labelledby="profile-heading" className="w-full py-12 text-center">
-            <DeskCat className="mx-auto mb-9 w-44 text-foreground/80" />
-            <h1 id="profile-heading" className="font-brand text-page-title">Make yourself at home.</h1>
-            <p className="mx-auto mt-4 max-w-sm text-body text-muted-foreground">Complete your profile, tell us what you are doing and discover other members exploring various ideas.</p>
-            <form action={signInWithTekid} className="mt-7">
-              <ProfileSubmitButton pendingLabel="Continuing to tekID…">Sign in to get started</ProfileSubmitButton>
-            </form>
+          <section aria-labelledby="profile-heading">
+            <h1 id="profile-heading" className="font-brand text-page-title">Join dot*WTF</h1>
+            <p className="mt-4 text-body leading-relaxed text-muted-foreground">
+              Tell us who you are and what you make. An admin reads every application, and your club account is created when yours is approved.
+            </p>
             {errorMessage ? <p role="alert" className="mt-5 text-sm text-destructive">{errorMessage}</p> : null}
+            <div className="mt-10">
+              <ApplicationForm allowedEmailDomains={[...env.MEMBER_EMAIL_DOMAINS]} />
+            </div>
           </section>
         )}
       </main>
