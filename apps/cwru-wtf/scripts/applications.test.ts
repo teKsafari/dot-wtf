@@ -327,7 +327,7 @@ test('the same email cannot apply twice, and the second photo is not kept', asyn
   assert.equal(files.size, 1);
 });
 
-test('approval creates the club account, the member number and the sign-in link together', async () => {
+test('approval creates the Club ID, the member number and the sign-in link together', async () => {
   const { service, state, tekid } = createService();
   const application = await submitOne(service);
 
@@ -354,7 +354,7 @@ test('an identity-service failure leaves the application pending, with no number
   const { service, state, tekid } = createService({
     tekid: {
       async createUser() {
-        throw new TekidAdminError(503, null, 'The club identity service did not answer.');
+        throw new TekidAdminError(503, null, 'The Club ID service did not answer.');
       },
     },
   });
@@ -375,7 +375,7 @@ test('a failure after the account exists rolls the record back and deletes that 
   const { service, state, tekid } = createService({
     tekid: {
       async createOneTimeAccessToken() {
-        throw new TekidAdminError(500, null, 'The club identity service rejected the request (500).');
+        throw new TekidAdminError(500, null, 'The Club ID service rejected the request (500).');
       },
     },
   });
@@ -396,7 +396,7 @@ test('an email the identity service already holds is reported as a conflict, not
   const { service, state } = createService({
     tekid: {
       async createUser() {
-        throw new TekidAdminError(409, 'already_in_use', 'The club identity service rejected the request (409).');
+        throw new TekidAdminError(409, 'already_in_use', 'The Club ID service rejected the request (409).');
       },
     },
   });

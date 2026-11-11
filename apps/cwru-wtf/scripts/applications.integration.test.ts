@@ -155,7 +155,7 @@ describe('public application Postgres integration', { skip: !testUrl }, () => {
     await assert.rejects(
       service({
         async createUser() { return { id: 'tekid-orphan', username: 'ada', email: 'ada@example.org' }; },
-        async createOneTimeAccessToken() { throw new TekidAdminError(500, null, 'The club identity service rejected the request (500).'); },
+        async createOneTimeAccessToken() { throw new TekidAdminError(500, null, 'The Club ID service rejected the request (500).'); },
       }).approve(application.userId, 'admin-sub'),
       (error: unknown) => error instanceof ApplicationError && error.status === 503
     );

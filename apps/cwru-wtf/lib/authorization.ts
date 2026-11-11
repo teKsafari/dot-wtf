@@ -80,7 +80,7 @@ export function createDashboardAuthorization(dependencies: {
       context = await getDashboardAuthContext();
     } catch (error) {
       if (error instanceof TekidProfileContractError) {
-        throw new AuthorizationError(403, 'Complete your club account profile before using the dashboard.');
+        throw new AuthorizationError(403, 'Complete your Club ID profile before using the dashboard.');
       }
       throw error;
     }

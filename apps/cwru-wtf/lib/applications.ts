@@ -213,7 +213,7 @@ export function createApplicationService(dependencies: ApplicationServiceDepende
       throw new ApplicationError(409, 'This application has already been reviewed.');
     }
     if (application.tekidUserId) {
-      throw new ApplicationError(409, 'This person already has a club account. Review them in the members list.');
+      throw new ApplicationError(409, 'This person already has a Club ID. Review them in the members list.');
     }
     return application;
   }
@@ -310,8 +310,8 @@ function asApplicationError(error: unknown): unknown {
     return new ApplicationError(
       error.code === tekidEmailInUse ? 409 : 503,
       error.code === tekidEmailInUse
-        ? 'A club account already uses this email. Link it in the members list instead.'
-        : 'The club identity service could not create the account, so nothing was approved. Try again.'
+        ? 'A Club ID already uses this email. Link it in the members list instead.'
+        : 'The Club ID service could not create the account, so nothing was approved. Try again.'
     );
   }
   return error;

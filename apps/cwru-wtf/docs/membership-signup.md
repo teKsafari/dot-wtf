@@ -1,8 +1,8 @@
 # Membership signup
 
 A stranger applies at `/profile` with no account. An admin reviews the
-application in the dashboard. Approving it creates the applicant's club
-account, which is the credential for club resources, and shows the reviewer a
+application in the dashboard. Approving it creates the applicant's Club ID,
+which is the credential for club resources, and shows the reviewer a
 one-time sign-in link to pass on.
 
 The landing page's "Get started" goes to `/profile`. There is one membership
@@ -22,7 +22,7 @@ already requires (`lib/member-profile-fields.ts`): name, institution, WhatsApp,
 portfolio, at least one category, a WTF idea, a current project, and a video.
 GitHub, Instagram, LinkedIn and a short bio are optional.
 
-The email becomes the club identity, so it is validated as an address, not
+The email becomes the Club ID, so it is validated as an address, not
 only as a non-empty string, and it must not already belong to a dot*WTF account.
 
 ### The school-email rule
@@ -44,7 +44,7 @@ so the list is per-instance configuration rather than a constant.
   by accident.
 - The rule guards new applications only. A member already approved on another
   domain keeps their membership, and editing a profile never passes through
-  this path: a member's address comes from their club account, and the form
+  this path: a member's address comes from their Club ID, and the form
   shows it read-only.
 
 The photo is a JPEG, PNG or WebP of up to `UPLOADS_MAX_BYTES` (5 MB by default).
@@ -53,7 +53,7 @@ through the driver in `lib/uploads.ts` under `UPLOADS_DIR` and served from
 `/api/uploads/<key>`, where the key is 16 random bytes. Moving these files to
 object storage is a second `UploadStore`, not a change to the form or the queue.
 
-A submitted application is a local identity with no club-account subject yet:
+A submitted application is a local identity with no Club ID subject yet:
 `users.tekid_user_id` is null, `profiles` holds the answers and the photo, and
 `memberships` is `pending` with `submitted_at`. **No member number is
 allocated**: a number belongs to an approved member.
@@ -80,21 +80,21 @@ every other membership decision.
 **Approve** runs one transaction, under the same advisory lock as every other
 membership write:
 
-1. create the club account from the applicant's email and name;
+1. create the Club ID from the applicant's email and name;
 2. add it to `TEKID_MEMBER_GROUP`, creating that group if it is missing;
 3. mint a one-time access token;
-4. write the club-account subject onto the local user, allocate the member number, set
+4. write the Club ID subject onto the local user, allocate the member number, set
    `approved` with `approved_at`, and record an `action_logs` entry and a
    `member_audit_logs` marker.
 
 If any step fails, nothing is approved: the application stays pending and
 reviewable. An approved member with no credential looks fine until they try to
-use something, so that case is refused rather than repaired later. If the club
-account was already created when the failure happened, it is deleted again, so a
+use something, so that case is refused rather than repaired later. If the Club ID
+was already created when the failure happened, it is deleted again, so a
 retry does not hit "email already in use".
 
 **Reject** marks the application `rejected` and records the decision. It creates
-no club account.
+no Club ID.
 
 ## Handing over the credential
 

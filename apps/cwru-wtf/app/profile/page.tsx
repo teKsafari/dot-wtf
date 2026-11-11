@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic"
 
 // This is the club's only membership form. A stranger fills it in with no
-// account at all: the club account is minted when an admin approves them, so
+// account at all: the Club ID is minted when an admin approves them, so
 // requiring a sign-in here would be asking for the thing this page produces.
 // A member who is signed in gets the same questions, already filled in.
 export default async function ProfilePage({ searchParams }: {
@@ -60,7 +60,7 @@ export default async function ProfilePage({ searchParams }: {
         {signedIn || auth instanceof TekidProfileContractError ? (
           <Link href="/" className={secondaryLinkClassName}>Back home</Link>
         ) : (
-          <a href={`/api/tekid/sign-in?returnTo=${tekidProfilePath}`} className={secondaryLinkClassName}>Already a member? Sign in</a>
+          <a href={`/api/tekid/sign-in?returnTo=${tekidProfilePath}`} className={secondaryLinkClassName}>Sign in</a>
         )}
       </header>
 
@@ -70,10 +70,10 @@ export default async function ProfilePage({ searchParams }: {
             <h1 id="profile-heading" className="font-brand text-3xl font-semibold tracking-tight">Your account needs attention</h1>
             <p role="alert" className="mt-3 text-sm leading-relaxed text-muted-foreground">
               {auth.field === "email"
-                ? "Add a valid email address to your club account, then sign in again."
-                : "We couldn’t load your sign-in details. Check your club account, then sign in again."}
+                ? "Add a valid email address to your Club ID account, then sign in again."
+                : "We couldn’t load your sign-in details. Check your Club ID account, then sign in again."}
             </p>
-            <a href={clubAccountUrl} target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open your club account</a>
+            <a href={clubAccountUrl} target="_blank" rel="noopener noreferrer" className={`${secondaryLinkClassName} mt-4`}>Open your Club ID account</a>
             <form action={signInWithTekid} className="mt-7">
               <ProfileSubmitButton pendingLabel="Taking you to sign-in…">Sign in again</ProfileSubmitButton>
             </form>
@@ -128,7 +128,7 @@ export default async function ProfilePage({ searchParams }: {
           <section aria-labelledby="profile-heading">
             <h1 id="profile-heading" className="font-brand text-page-title">Join dot*WTF</h1>
             <p className="mt-4 text-body leading-relaxed text-muted-foreground">
-              Tell us who you are and what you make. An admin reads every application, and your club account is created when yours is approved.
+              Tell us who you are and what you make. An admin reads every application, and your Club ID is created when yours is approved.
             </p>
             {errorMessage ? <p role="alert" className="mt-5 text-sm text-destructive">{errorMessage}</p> : null}
             <div className="mt-10">

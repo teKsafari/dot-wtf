@@ -167,11 +167,12 @@ function CategoryFields({ state, idPrefix }: { state: ProfileFormState; idPrefix
 // Every question both a member and an applicant answer. The two differ only in
 // what sits beside the name: a member's address is read from their Club ID,
 // an applicant types one and attaches a photo.
-function ProfileSections({ state, id, identitySlot, cardSlot }: {
+function ProfileSections({ state, id, identitySlot, cardSlot, cardLead }: {
   state: ProfileFormState
   id: string
   identitySlot?: ReactNode
   cardSlot?: ReactNode
+  cardLead: string
 }) {
   return (
     <>
@@ -194,7 +195,7 @@ function ProfileSections({ state, id, identitySlot, cardSlot }: {
       <section aria-labelledby={`${id}-card-heading`} className="flex flex-col gap-6 border-t border-border pt-8">
         <div>
           <h2 id={`${id}-card-heading`} className="font-brand text-section-title">Your member card</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Once approved, other members see your name, photo, member number, bio, and links. These extras are optional.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{cardLead}</p>
         </div>
         {cardSlot}
         <ProfileInput field={{ name: "bio", label: "Bio", maxLength: profileLimits.bio, rows: 3, placeholder: "A little about you and the things you make." }} state={state} idPrefix={id} />
@@ -334,13 +335,14 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
         <ProfileSections
           state={state}
           id={id}
+          cardLead="Once approved, other members see your name, photo, member number, bio, and links. These extras are optional."
           identitySlot={
             <div>
               <Label htmlFor={`${id}-email`}>Email</Label>
               <Input id={`${id}-email`} value={email} readOnly type="email" autoComplete="email" aria-describedby={`${id}-email-hint`} className="mt-3 bg-muted/60" />
-              <p id={`${id}-email-hint`} className="mt-2 text-sm text-muted-foreground">Your sign-in email. {emailVerified ? "Verified." : "Verify it in your club account before submitting your application."}</p>
+              <p id={`${id}-email-hint`} className="mt-2 text-sm text-muted-foreground">Your sign-in email. {emailVerified ? "Verified." : "Verify it in your Club ID account before submitting your application."}</p>
               {!emailVerified ? (
-                <a href={clubIdAccountUrl} target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in your club account</a>
+                <a href={clubIdAccountUrl} target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in your Club ID account</a>
               ) : null}
             </div>
           }
@@ -361,7 +363,7 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
         <p aria-live="polite" aria-atomic="true" className={cn("mt-3 text-sm", state.status === "saved" ? "text-success" : "text-destructive")}>
           {pending ? null : state.message}
         </p>
-        {canSubmit && !emailVerified ? <p className="mt-3 text-sm text-muted-foreground">You can save now. After verifying your email in your club account, sign out and sign in again to submit.</p> : null}
+        {canSubmit && !emailVerified ? <p className="mt-3 text-sm text-muted-foreground">You can save now. After verifying your email in your Club ID account, sign out and sign in again to submit.</p> : null}
       </div>
     </form>
   )
@@ -387,7 +389,7 @@ export function ApplicationForm({ allowedEmailDomains }: { allowedEmailDomains: 
       <section aria-label="Application received" className="corner-squircle rounded-2xl border border-border bg-muted/50 p-6 sm:p-8">
         <h2 className="font-brand text-section-title">Application received</h2>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          An admin reads every application. When yours is approved we send you a sign-in link, and your club account is created then.
+          An admin reads every application. When yours is approved we send you a sign-in link, and your Club ID is created then.
         </p>
       </section>
     )
@@ -408,11 +410,12 @@ export function ApplicationForm({ allowedEmailDomains }: { allowedEmailDomains: 
         <ProfileSections
           state={state}
           id={id}
+          cardLead="Once approved, other members see your name, photo, member number, bio, and links. Only the photo is needed now."
           identitySlot={
             <div>
               <Label htmlFor={`${id}-email`}>Email<span aria-hidden="true" className="ml-1 text-muted-foreground">*</span></Label>
               <p id={`${id}-email-hint`} className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                {accepted ? `Your school address, ending in ${accepted}.` : "Your school address."} Your club sign-in is created from it when you are approved.
+                {accepted ? `Your school address, ending in ${accepted}.` : "Your school address."} Your Club ID is created from it when you are approved.
               </p>
               <Input
                 id={`${id}-email`}

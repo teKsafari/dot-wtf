@@ -77,7 +77,7 @@ export function createTekidAdminClient(options: {
       });
     } catch {
       // Never repeat the key, the path, or the applicant's values in an error.
-      throw new TekidAdminError(0, null, 'The club identity service did not answer.');
+      throw new TekidAdminError(0, null, 'The Club ID service did not answer.');
     }
 
     if (response.status === 204) return null;
@@ -86,13 +86,13 @@ export function createTekidAdminClient(options: {
     // A status alone lies here: a proxy or the login page answers 200 with HTML.
     if (!contentType.includes('application/json')) {
       await response.body?.cancel();
-      throw new TekidAdminError(response.status, null, 'The club identity service answered with something other than its API.');
+      throw new TekidAdminError(response.status, null, 'The Club ID service answered with something other than its API.');
     }
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = (payload ?? {}) as Json;
       const code = typeof error.code === 'string' ? error.code : null;
-      throw new TekidAdminError(response.status, code, `The club identity service rejected the request (${response.status}).`);
+      throw new TekidAdminError(response.status, code, `The Club ID service rejected the request (${response.status}).`);
     }
     return payload;
   }
@@ -100,7 +100,7 @@ export function createTekidAdminClient(options: {
   function asUser(payload: unknown): TekidUser {
     const user = (payload ?? {}) as Json;
     if (typeof user.id !== 'string' || !user.id) {
-      throw new TekidAdminError(200, null, 'The club identity service returned an account without an id.');
+      throw new TekidAdminError(200, null, 'The Club ID service returned an account without an id.');
     }
     return {
       id: user.id,
@@ -112,7 +112,7 @@ export function createTekidAdminClient(options: {
   function asGroup(payload: unknown): TekidUserGroup {
     const group = (payload ?? {}) as Json;
     if (typeof group.id !== 'string' || !group.id) {
-      throw new TekidAdminError(200, null, 'The club identity service returned a group without an id.');
+      throw new TekidAdminError(200, null, 'The Club ID service returned a group without an id.');
     }
     return { id: group.id, name: typeof group.name === 'string' ? group.name : '' };
   }
@@ -143,7 +143,7 @@ export function createTekidAdminClient(options: {
       const payload = (await request('POST', `/api/users/${encodeURIComponent(userId)}/one-time-access-token`, { ttl })) as Json | null;
       const token = payload?.token;
       if (typeof token !== 'string' || !token) {
-        throw new TekidAdminError(200, null, 'The club identity service returned no sign-in token.');
+        throw new TekidAdminError(200, null, 'The Club ID service returned no sign-in token.');
       }
       return token;
     },
