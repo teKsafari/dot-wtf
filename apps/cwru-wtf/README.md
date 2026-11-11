@@ -98,7 +98,7 @@ The dot-wtf app's **Branding → CSS overrides** in Logto contains [docs/tekid-s
 
 ## Member applications and directory
 
-Logto handles sign-in and identity claims. PostgreSQL owns the application, membership status, dashboard role, and unique member number. `/join` redirects to [/profile](http://dot-wtf.localhost:1355/profile); the Tally embed and both old intake routes are retired.
+The identity server handles sign-in and identity claims. PostgreSQL owns the application, membership status, dashboard role, and unique member number. [/profile](http://dot-wtf.localhost:1355/profile) is the one membership form, for members and strangers alike; `/join` redirects to it, and the Tally embed and both old intake routes are retired. `MEMBER_EMAIL_DOMAINS` lists the email domains an application may use (see [docs/membership-signup.md](docs/membership-signup.md)).
 
 `users` stores the local UUID and external tekID identity. `profiles` stores editable application answers and public profile details, linked by `user_id`. `memberships` stores a separate UUID, the same `user_id`, review status, role, and the editable `member_number`. Changing a member number never changes either UUID. Authentication resolves the external subject to the local user; authorization reads their membership without depending on a profile row.
 

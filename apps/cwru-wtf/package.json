@@ -15,7 +15,7 @@
     "migrate-database": "node scripts/run-migrate-database.js",
     "tally:export": "tsx scripts/export-tally-migration.ts",
     "test:tally": "tsx --test scripts/tally-webhook.test.ts",
-    "test:env": "tsx --test scripts/env.test.ts",
+    "test:env": "tsx --test scripts/env.test.ts scripts/email-domains.test.ts",
     "test:tekid": "node --conditions=react-server --import tsx --test scripts/tekid.test.ts scripts/tekid-redirects.test.ts",
     "test:admin": "node --conditions=react-server --import tsx --test scripts/local-members.test.ts scripts/local-members.integration.test.ts",
     "test:profiles": "node --conditions=react-server --import tsx --test scripts/member-profile-fields.test.ts scripts/member-profiles.test.ts",

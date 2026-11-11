@@ -151,7 +151,7 @@ export function createProfileStore(database: ProfileDatabase) {
   async function saveProfile(claims: AuthSession, input: ProfileFields, intent: 'save' | 'submit' = 'save'): Promise<MemberProfileView> {
     const fields = (intent === 'submit' ? applicationFieldsSchema : profileFieldsSchema).parse(input);
     if (intent === 'submit' && !claims.email_verified) {
-      throw new ProfileSubmissionError('Verify your email in tekID, then sign in again before submitting your application.');
+      throw new ProfileSubmissionError('Verify your email in your Club ID account, then sign in again before submitting your application.');
     }
     return database.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('dot-wtf:membership', 0))`);

@@ -1,9 +1,15 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { unstable_rethrow } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
+import { applicationHoneypotField } from '@/lib/application-fields';
+import { ApplicationError } from '@/lib/applications';
+import { getApplicationService } from '@/lib/applications-server';
+import { clientAddress } from '@/lib/rate-limit';
 import {
+  emptyProfileFields,
   profileFieldNames,
   applicationFieldsSchema,
   profileFieldsFromFormData,
@@ -43,7 +49,7 @@ export async function saveProfile(
     return {
       status: 'error',
       fields: submitted,
-      message: 'Your tekID session has ended. Sign in again, then save your profile.',
+      message: 'Your session has ended. Sign in again, then save your profile.',
     };
   }
 
@@ -78,5 +84,43 @@ export async function saveProfile(
     }
     console.error('Unable to save a member profile');
     return { status: 'error', fields: submitted, message: 'We couldn’t save your profile. Please try again.' };
+  }
+}
+
+// The same form, filled in by somebody with no account. Membership is the
+// output of review, so this path signs nobody in: it records a pending
+// application and an admin mints the Club ID when they approve it.
+export async function submitApplication(
+  _previous: ProfileFormState,
+  formData: FormData
+): Promise<ProfileFormState> {
+  const fields = profileFieldsFromFormData(formData);
+  const submittedEmail = formData.get('email');
+  const email = typeof submittedEmail === 'string' ? submittedEmail : '';
+
+  try {
+    await getApplicationService().submit({
+      email,
+      fields,
+      photo: formData.get('photo'),
+      honeypot: formData.get(applicationHoneypotField),
+      clientAddress: clientAddress(await headers()),
+    });
+    revalidatePath('/admin');
+    return { status: 'submitted', email: '', fields: emptyProfileFields };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApplicationError) {
+      // A filled honeypot is answered like a success, so a script learns nothing.
+      if (error.status === 400 && Object.keys(error.errors).length === 0) {
+        return { status: 'submitted', email: '', fields: emptyProfileFields };
+      }
+      return {
+        status: error.status === 400 ? 'invalid' : 'error',
+        email, fields, errors: error.errors, message: error.message,
+      };
+    }
+    console.error('Unable to record a membership application');
+    return { status: 'error', email, fields, message: 'We couldn’t save your application. Please try again.' };
   }
 }

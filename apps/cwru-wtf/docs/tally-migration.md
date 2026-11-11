@@ -1,6 +1,6 @@
 # Historical Tally application migration
 
-This document preserves the earlier migration and reconciliation record. Current intake uses the authenticated `/profile` application: `/join` redirects there, the Tally embed is removed, and both `POST /api/submissions` and `POST /api/tally/webhook` return `410 Gone` without creating local applications.
+This document preserves the earlier migration and reconciliation record. Current intake uses the `/profile` membership form, which is public: `/join` redirects there, the Tally embed is removed, and both `POST /api/submissions` and `POST /api/tally/webhook` return `410 Gone` without creating local applications.
 
 Existing `submissions` rows remain historical records. Their old approvals do not grant local membership. Eligible verified users can reuse historical answers in a profile, then submit the current application for local review. See [the local membership rollout](local-membership-rollout.md).
 

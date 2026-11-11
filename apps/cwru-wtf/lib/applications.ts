@@ -26,6 +26,7 @@ import {
   createTekidAdminClient, expiryFromTtl, tekidEmailInUse,
   TekidAdminError, type TekidAdminClient,
 } from './tekid/admin';
+import { emailDomainAllowed, emailDomainMessage } from './email-domains';
 import { createRateLimiter, type RateLimiter } from './rate-limit';
 import {
   readImageUpload, UploadError, type UploadStore,
@@ -95,6 +96,9 @@ export interface ApplicationServiceDependencies {
   store: ApplicationStore;
   uploads: UploadStore;
   tekid: () => TekidAdminClient;
+  // Nothing can send a verification email, so the domain is the only evidence
+  // an applicant is a student. Empty accepts nobody; see lib/email-domains.ts.
+  allowedEmailDomains: readonly string[];
   memberGroup: string;
   linkTtl: string;
   maximumUploadBytes: number;
@@ -143,7 +147,11 @@ export function createApplicationService(dependencies: ApplicationServiceDepende
     const email = applicantEmailSchema.safeParse(submission.email);
     const fields = applicationFieldsSchema.safeParse(submission.fields);
     const errors: Partial<Record<ApplicationField, string>> = {};
-    if (!email.success) errors.email = email.error.issues[0]?.message ?? 'Enter an email address you can open.';
+    if (!email.success) {
+      errors.email = email.error.issues[0]?.message ?? 'Enter an email address you can open.';
+    } else if (!emailDomainAllowed(email.data, dependencies.allowedEmailDomains)) {
+      errors.email = emailDomainMessage(dependencies.allowedEmailDomains);
+    }
     if (!fields.success) {
       const fieldErrors = fields.error.flatten().fieldErrors;
       for (const name of profileFieldNames) {
@@ -205,7 +213,7 @@ export function createApplicationService(dependencies: ApplicationServiceDepende
       throw new ApplicationError(409, 'This application has already been reviewed.');
     }
     if (application.tekidUserId) {
-      throw new ApplicationError(409, 'This person already has a tekID account. Review them in the members list.');
+      throw new ApplicationError(409, 'This person already has a Club ID. Review them in the members list.');
     }
     return application;
   }
@@ -302,8 +310,8 @@ function asApplicationError(error: unknown): unknown {
     return new ApplicationError(
       error.code === tekidEmailInUse ? 409 : 503,
       error.code === tekidEmailInUse
-        ? 'tekID already has an account with this email. Link it in the members list instead.'
-        : 'tekID could not create the account, so nothing was approved. Try again.'
+        ? 'A Club ID already uses this email. Link it in the members list instead.'
+        : 'The Club ID service could not create the account, so nothing was approved. Try again.'
     );
   }
   return error;

@@ -185,7 +185,7 @@ export default function ApplicationQueue({ canReview }: { canReview: boolean }) 
         {canReview && !approved ? (
           <div className="mt-5 flex flex-wrap gap-3 border-t border-border pt-5">
             <Button type="button" disabled={busy} onClick={() => void run(application, "approve")}>
-              {busy ? "Working…" : "Approve and create tekID"}
+              {busy ? "Working…" : "Approve and create their Club ID"}
             </Button>
             <Button type="button" variant="outline" disabled={busy} onClick={() => void run(application, "reject")}>
               Reject

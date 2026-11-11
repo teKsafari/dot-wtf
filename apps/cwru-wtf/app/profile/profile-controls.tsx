@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { applicationHoneypotField } from "@/lib/application-fields"
+import { formatEmailDomains } from "@/lib/email-domains"
 import {
   categoryOptions,
+  emptyProfileFields,
   profileFieldsFromFormData,
   profileLimits,
   socialLinkLabels,
@@ -20,7 +23,7 @@ import {
   type ProfileFormState,
 } from "@/lib/member-profile-fields"
 import { cn } from "@/lib/utils"
-import { saveProfile } from "./actions"
+import { saveProfile, submitApplication } from "./actions"
 
 export function ProfileSubmitButton({
   children,
@@ -161,6 +164,50 @@ function CategoryFields({ state, idPrefix }: { state: ProfileFormState; idPrefix
   )
 }
 
+// Every question both a member and an applicant answer. The two differ only in
+// what sits beside the name: a member's address is read from their Club ID,
+// an applicant types one and attaches a photo.
+function ProfileSections({ state, id, identitySlot, cardSlot, cardLead }: {
+  state: ProfileFormState
+  id: string
+  identitySlot?: ReactNode
+  cardSlot?: ReactNode
+  cardLead: string
+}) {
+  return (
+    <>
+      <section aria-labelledby={`${id}-details-heading`} className="flex flex-col gap-6">
+        <h2 id={`${id}-details-heading`} className="font-brand text-section-title">Your details</h2>
+        <ProfileInput field={detailFields[0]} state={state} idPrefix={id} />
+        {identitySlot}
+        {detailFields.slice(1).map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
+      </section>
+
+      <section aria-labelledby={`${id}-application-heading`} className="flex flex-col gap-6 border-t border-border pt-8">
+        <div>
+          <h2 id={`${id}-application-heading`} className="font-brand text-section-title">What makes you, you</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Tell us what you are curious about. Your application answers are shared with the review team.</p>
+        </div>
+        <CategoryFields state={state} idPrefix={id} />
+        {applicationFields.map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
+      </section>
+
+      <section aria-labelledby={`${id}-card-heading`} className="flex flex-col gap-6 border-t border-border pt-8">
+        <div>
+          <h2 id={`${id}-card-heading`} className="font-brand text-section-title">Your member card</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{cardLead}</p>
+        </div>
+        {cardSlot}
+        <ProfileInput field={{ name: "bio", label: "Bio", maxLength: profileLimits.bio, rows: 3, placeholder: "A little about you and the things you make." }} state={state} idPrefix={id} />
+        <div className="grid gap-5 sm:grid-cols-2">
+          {linkFields.map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
+        </div>
+        <p className="text-sm text-muted-foreground">Your portfolio link from above appears on your member card too.</p>
+      </section>
+    </>
+  )
+}
+
 const statusContent: Record<ApplicationStatus, { label: string; description: string }> = {
   draft: { label: "Your profile, in progress", description: "Take your time. Save a draft, then send your application when it feels like you." },
   pending: { label: "Application under review", description: "Your application is with the team. You can keep your details up to date while you wait." },
@@ -196,27 +243,63 @@ function MembershipStatus({ status, memberNumber, submittedAt }: {
   )
 }
 
+// Keeps the typed answers when the action itself cannot be reached.
+function keepInput(previous: ProfileFormState, formData: FormData, message: string): ProfileFormState {
+  const submittedEmail = formData.get("email")
+  return {
+    status: "error",
+    fields: profileFieldsFromFormData(formData),
+    email: typeof submittedEmail === "string" ? submittedEmail : previous.email,
+    applicationStatus: previous.applicationStatus,
+    memberNumber: previous.memberNumber,
+    message,
+  }
+}
+
 async function saveProfileOrKeepInput(previous: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
   try {
     return await saveProfile(previous, formData)
   } catch {
-    return {
-      status: "error",
-      fields: profileFieldsFromFormData(formData),
-      applicationStatus: previous.applicationStatus,
-      memberNumber: previous.memberNumber,
-      message: "We couldn’t reach dot*WTF. Your answers are still here. Check your connection and try again.",
-    }
+    return keepInput(previous, formData, "We couldn’t reach dot*WTF. Your answers are still here. Check your connection and try again.")
   }
 }
 
-export function ProfileForm({ initialFields, status, email, emailVerified, memberNumber, submittedAt }: {
+async function submitApplicationOrKeepInput(previous: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
+  try {
+    return await submitApplication(previous, formData)
+  } catch {
+    return keepInput(previous, formData, "We couldn’t reach dot*WTF. Your answers are still here. Check your connection and try again.")
+  }
+}
+
+// Moves focus to the first rejected field, and otherwise back to whatever the
+// person was using when they submitted.
+function useRestoreFocus(
+  state: ProfileFormState,
+  pending: boolean,
+  formRef: React.RefObject<HTMLFormElement | null>,
+  focusedOnSubmit: React.RefObject<HTMLElement | null>
+) {
+  useEffect(() => {
+    if (pending) return
+    const element = focusedOnSubmit.current
+    focusedOnSubmit.current = null
+    if (state.status === "invalid") {
+      const invalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')
+      if (invalid) { invalid.focus(); return }
+    }
+    if (element?.isConnected && (document.activeElement === document.body || !document.activeElement)) element.focus()
+  }, [state, pending, formRef, focusedOnSubmit])
+}
+
+export function ProfileForm({ initialFields, status, email, emailVerified, memberNumber, submittedAt, clubIdAccountUrl }: {
   initialFields: ProfileFields
   status: ApplicationStatus
   email: string
   emailVerified: boolean
   memberNumber: number | null
   submittedAt: string | null
+  clubIdAccountUrl: string
 }) {
   const [state, formAction, pending] = useActionState(saveProfileOrKeepInput, {
     status: "idle", fields: initialFields, applicationStatus: status, memberNumber,
@@ -231,16 +314,7 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
   const canSubmit = applicationStatus === "draft" || applicationStatus === "rejected"
 
   useEffect(() => { if (state.status === "saved") router.refresh() }, [state, router])
-  useEffect(() => {
-    if (pending) return
-    const element = focusedOnSubmit.current
-    focusedOnSubmit.current = null
-    if (state.status === "invalid") {
-      const invalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')
-      if (invalid) { invalid.focus(); return }
-    }
-    if (element?.isConnected && (document.activeElement === document.body || !document.activeElement)) element.focus()
-  }, [state, pending])
+  useRestoreFocus(state, pending, formRef, focusedOnSubmit)
 
   return (
     <form
@@ -258,40 +332,21 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
       <p className="text-sm text-muted-foreground">Fields marked <span aria-hidden="true">*</span><span className="sr-only">with an asterisk</span> are needed to submit your application. You can save an unfinished draft.</p>
       {/* Lock inputs until the action settles so React's form reset cannot discard new typing. */}
       <fieldset disabled={pending} className="flex min-w-0 flex-col gap-10">
-        <section aria-labelledby={`${id}-details-heading`} className="flex flex-col gap-6">
-          <h2 id={`${id}-details-heading`} className="font-brand text-section-title">Your details</h2>
-          <ProfileInput field={detailFields[0]} state={state} idPrefix={id} />
-          <div>
-            <Label htmlFor={`${id}-email`}>Email</Label>
-            <Input id={`${id}-email`} value={email} readOnly type="email" autoComplete="email" aria-describedby={`${id}-email-hint`} className="mt-3 bg-muted/60" />
-            <p id={`${id}-email-hint`} className="mt-2 text-sm text-muted-foreground">Your sign-in email. {emailVerified ? "Verified with tekID." : "Verify it in tekID before submitting your application."}</p>
-            {!emailVerified ? (
-              <a href="https://id.teksafari.com/account/security" target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in tekID</a>
-            ) : null}
-          </div>
-          {detailFields.slice(1).map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
-        </section>
-
-        <section aria-labelledby={`${id}-application-heading`} className="flex flex-col gap-6 border-t border-border pt-8">
-          <div>
-            <h2 id={`${id}-application-heading`} className="font-brand text-section-title">What makes you, you</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Tell us what you are curious about. Your application answers are shared with the review team.</p>
-          </div>
-          <CategoryFields state={state} idPrefix={id} />
-          {applicationFields.map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
-        </section>
-
-        <section aria-labelledby={`${id}-card-heading`} className="flex flex-col gap-6 border-t border-border pt-8">
-          <div>
-            <h2 id={`${id}-card-heading`} className="font-brand text-section-title">Your member card</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Once approved, other members see your name, photo, member number, bio, and links. These extras are optional.</p>
-          </div>
-          <ProfileInput field={{ name: "bio", label: "Bio", maxLength: profileLimits.bio, rows: 3, placeholder: "A little about you and the things you make." }} state={state} idPrefix={id} />
-          <div className="grid gap-5 sm:grid-cols-2">
-            {linkFields.map((field) => <ProfileInput key={field.name} field={field} state={state} idPrefix={id} />)}
-          </div>
-          <p className="text-sm text-muted-foreground">Your portfolio link from above appears on your member card too.</p>
-        </section>
+        <ProfileSections
+          state={state}
+          id={id}
+          cardLead="Once approved, other members see your name, photo, member number, bio, and links. These extras are optional."
+          identitySlot={
+            <div>
+              <Label htmlFor={`${id}-email`}>Email</Label>
+              <Input id={`${id}-email`} value={email} readOnly type="email" autoComplete="email" aria-describedby={`${id}-email-hint`} className="mt-3 bg-muted/60" />
+              <p id={`${id}-email-hint`} className="mt-2 text-sm text-muted-foreground">Your sign-in email. {emailVerified ? "Verified." : "Verify it in your Club ID account before submitting your application."}</p>
+              {!emailVerified ? (
+                <a href={clubIdAccountUrl} target="_blank" rel="noopener noreferrer" className="focus-ring mt-2 inline-flex min-h-10 items-center rounded-sm text-sm text-link underline underline-offset-4">Verify your email in your Club ID account</a>
+              ) : null}
+            </div>
+          }
+        />
       </fieldset>
 
       <div className="border-t border-border pt-6">
@@ -308,8 +363,118 @@ export function ProfileForm({ initialFields, status, email, emailVerified, membe
         <p aria-live="polite" aria-atomic="true" className={cn("mt-3 text-sm", state.status === "saved" ? "text-success" : "text-destructive")}>
           {pending ? null : state.message}
         </p>
-        {canSubmit && !emailVerified ? <p className="mt-3 text-sm text-muted-foreground">You can save now. After verifying your email in tekID, sign out and sign in again to submit.</p> : null}
+        {canSubmit && !emailVerified ? <p className="mt-3 text-sm text-muted-foreground">You can save now. After verifying your email in your Club ID account, sign out and sign in again to submit.</p> : null}
       </div>
     </form>
   )
 }
+
+// The same form, for somebody with no account yet. The answers are identical;
+// the address they type becomes their Club ID when an admin approves them, and
+// the photo is uploaded here because there is no account to read one from.
+export function ApplicationForm({ allowedEmailDomains }: { allowedEmailDomains: string[] }) {
+  const [state, formAction, pending] = useActionState(submitApplicationOrKeepInput, {
+    status: "idle", fields: emptyProfileFields, email: "",
+  } satisfies ProfileFormState)
+  const id = useId()
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusedOnSubmit = useRef<HTMLElement | null>(null)
+  const [photoName, setPhotoName] = useState("")
+  const accepted = formatEmailDomains(allowedEmailDomains)
+
+  useRestoreFocus(state, pending, formRef, focusedOnSubmit)
+
+  if (state.status === "submitted") {
+    return (
+      <section aria-label="Application received" className="corner-squircle rounded-2xl border border-border bg-muted/50 p-6 sm:p-8">
+        <h2 className="font-brand text-section-title">Application received</h2>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          An admin reads every application. When yours is approved we send you a sign-in link, and your Club ID is created then.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={() => {
+        focusedOnSubmit.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      }}
+      className="flex flex-col gap-8 text-left"
+      noValidate
+    >
+      <p className="text-sm text-muted-foreground">Fields marked <span aria-hidden="true">*</span><span className="sr-only">with an asterisk</span> are needed to send your application.</p>
+      <fieldset disabled={pending} className="flex min-w-0 flex-col gap-10">
+        <ProfileSections
+          state={state}
+          id={id}
+          cardLead="Once approved, other members see your name, photo, member number, bio, and links. Only the photo is needed now."
+          identitySlot={
+            <div>
+              <Label htmlFor={`${id}-email`}>Email<span aria-hidden="true" className="ml-1 text-muted-foreground">*</span></Label>
+              <p id={`${id}-email-hint`} className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                {accepted ? `Your school address, ending in ${accepted}.` : "Your school address."} Your Club ID is created from it when you are approved.
+              </p>
+              <Input
+                id={`${id}-email`}
+                name="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={254}
+                defaultValue={state.email ?? ""}
+                invalid={Boolean(state.errors?.email)}
+                aria-required="true"
+                aria-describedby={[`${id}-email-hint`, state.errors?.email ? `${id}-email-error` : null].filter(Boolean).join(" ")}
+                className="mt-3"
+              />
+              {state.errors?.email ? <p id={`${id}-email-error`} className="mt-2 text-sm text-destructive">{state.errors.email}</p> : null}
+            </div>
+          }
+          cardSlot={
+            <div>
+              <Label htmlFor={`${id}-photo`}>Photo<span aria-hidden="true" className="ml-1 text-muted-foreground">*</span></Label>
+              <p id={`${id}-photo-hint`} className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                A picture of you, or of something you made. JPEG, PNG, or WebP, up to 5 MB.
+              </p>
+              <input
+                id={`${id}-photo`}
+                name="photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                aria-required="true"
+                aria-invalid={Boolean(state.errors?.photo) || undefined}
+                aria-describedby={[`${id}-photo-hint`, state.errors?.photo ? `${id}-photo-error` : null].filter(Boolean).join(" ")}
+                onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
+                className="focus-ring corner-squircle mt-3 block w-full cursor-pointer rounded-xl border border-border bg-card px-4 py-3 text-sm file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium"
+              />
+              {photoName ? <p className="mt-2 text-sm text-muted-foreground">{photoName}</p> : null}
+              {state.errors?.photo ? <p id={`${id}-photo-error`} className="mt-2 text-sm text-destructive">{state.errors.photo}</p> : null}
+            </div>
+          }
+        />
+      </fieldset>
+
+      {/* Spam guard. Hidden from people and from assistive technology; a filled
+          value is treated as a bot and never reaches the database. */}
+      <div aria-hidden="true" className="hidden">
+        <label htmlFor={`${id}-${applicationHoneypotField}`}>Leave this empty</label>
+        <input id={`${id}-${applicationHoneypotField}`} name={applicationHoneypotField} type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
+      </div>
+
+      <div className="border-t border-border pt-6">
+        <Button type="submit" size="lg" disabled={pending} aria-busy={pending}>
+          {pending ? "Sending…" : "Send application"}
+        </Button>
+        <p aria-live="polite" aria-atomic="true" className="mt-3 text-sm text-destructive">
+          {pending ? null : state.message}
+        </p>
+      </div>
+    </form>
+  )
+}
+

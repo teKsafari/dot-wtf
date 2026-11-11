@@ -5,7 +5,7 @@ type ProfileClaims = Partial<Record<keyof AuthSession, unknown>>;
 export class TekidProfileContractError extends Error {
   constructor(readonly field: RequiredProfileClaim | 'claims') {
     // Keep profile values and tokens out of error messages.
-    super(`tekID profile contract requires a valid ${field}`);
+    super(`Club ID profile contract requires a valid ${field}`);
     this.name = 'TekidProfileContractError';
   }
 }

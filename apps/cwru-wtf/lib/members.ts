@@ -116,7 +116,7 @@ export function createMemberService(dependencies: {
     try {
       auth = await dependencies.getAuthContext();
     } catch (error) {
-      if (error instanceof TekidProfileContractError) throw new AuthorizationError(403, 'Complete your tekID profile before using the dashboard.');
+      if (error instanceof TekidProfileContractError) throw new AuthorizationError(403, 'Complete your Club ID profile before using the dashboard.');
       throw error;
     }
     if (!auth.isAuthenticated) throw new AuthorizationError(401);

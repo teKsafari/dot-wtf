@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     unstable_rethrow(error);
     await clearTekidSignInFlow();
     // Keep provider responses and tokens out of the log.
-    console.error('tekID sign-in could not be completed');
+    console.error('Club ID sign-in could not be completed');
     redirect(`${tekidProfilePath}?error=sign-in`);
   }
 

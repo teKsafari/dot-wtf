@@ -18,6 +18,9 @@ const nextConfig = {
         permanent: true,
       })),
       { source: '/test-profile', destination: '/profile', permanent: true },
+      // /join was a second copy of the membership form. There is one form now,
+      // and a link already shared still reaches it.
+      { source: '/join', destination: '/profile', permanent: true },
     ]
   },
   typescript: {
