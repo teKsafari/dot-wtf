@@ -36,6 +36,10 @@ WORKDIR /app/apps/cwru-wtf
 EXPOSE 3000
 # Stays root only long enough to chown the bind mount; entrypoint.sh drops to
 # node before the migration or the server runs.
+# node must own corepack's cache, or pnpm fails with EACCES after the drop.
+ENV COREPACK_HOME=/home/node/.cache/node/corepack
+RUN mkdir -p /home/node/.cache/node/corepack && chown -R node:node /home/node/.cache
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # drizzle-kit applies only the migrations missing from its journal table, so starting an
 # unchanged release is a no-op and a restarted container never re-runs a migration.
