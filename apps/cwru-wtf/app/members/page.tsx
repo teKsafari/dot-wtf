@@ -11,6 +11,9 @@ import MemberGrid from "./member-grid"
 
 export const metadata: Metadata = {
   title: "Members - dot*WTF",
+  // The directory is open to any visitor, but it is not for search engines:
+  // it carries members' names, bios and links.
+  robots: { index: false, follow: false },
 }
 
 export const dynamic = "force-dynamic"
