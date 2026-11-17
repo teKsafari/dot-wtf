@@ -68,12 +68,16 @@ test('directory permits only approved local members and projects only public fie
       { id: 'grace', name: 'grace', picture: null, bio: 'Bio', links: { github: 'https://github.com/grace' }, memberNumber: 2 },
     ],
   });
+  // The directory is public, so a viewer who is not an approved member still
+  // sees it; only viewerId changes.
   rows = rows.map((member) => member.id === 'ada' ? { ...member, status: 'suspended' } : member);
-  assert.deepEqual(await directory(), { status: 'not-member' });
-  assert.deepEqual(await createMemberDirectory({
+  assert.deepEqual((await directory()).members.map((member) => member.id), ['grace']);
+  const signedOut = await createMemberDirectory({
     getAuthContext: async () => ({ isAuthenticated: false, claims: null }),
-    loadMembers: async () => { throw new Error('must not query'); },
-  })(), { status: 'signed-out' });
+    loadMembers: async () => rows,
+  })();
+  assert.equal(signedOut.viewerId, null);
+  assert.deepEqual(signedOut.members.map((member) => member.id), ['grace']);
   await assert.rejects(createMemberDirectory({ getAuthContext: async () => auth, loadMembers: async () => { throw new Error('unavailable'); } })());
 });
 
