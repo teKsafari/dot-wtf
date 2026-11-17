@@ -302,7 +302,11 @@ describe('local membership Postgres integration', { skip: !testUrl }, () => {
     assert.deepEqual(result.members.map((member) => member.id), ['lead']);
     assert.equal('userId' in result.members[0]!, false);
     await db.update(schema.memberships).set({ status: 'suspended' }).where(eq(schema.memberships.id, admin.membershipId));
-    assert.deepEqual(await directory(), { status: 'not-member' });
+    // The directory is public, so suspending the viewer no longer closes it;
+    // it only drops them from the list.
+    const suspended = await directory();
+    assert.equal(suspended.status, 'member');
+    assert.deepEqual(suspended.members.map((member) => member.id), ['lead']);
   });
 
   test('staff without profiles remain visible and revocable without inventing profile rows', async () => {

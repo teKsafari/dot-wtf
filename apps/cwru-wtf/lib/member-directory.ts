@@ -8,9 +8,7 @@ import { safeMemberPicture, type DirectoryMember, type MemberStatus } from './me
 import type { AuthContextType } from './tekid/types';
 
 export type MemberDirectory =
-  | { status: 'signed-out' }
-  | { status: 'not-member' }
-  | { status: 'member'; viewerId: string; members: DirectoryMember[] };
+  | { status: 'member'; viewerId: string | null; members: DirectoryMember[] };
 
 export type DirectoryRecord = {
   id: string;
@@ -29,11 +27,10 @@ export function createMemberDirectory(dependencies: {
 }) {
   return async function getMemberDirectory(): Promise<MemberDirectory> {
     const auth = await dependencies.getAuthContext();
-    if (!auth.isAuthenticated) return { status: 'signed-out' };
-    // A single local query supplies both the viewer's approval and the directory snapshot.
-    // No token claims or stale Management API role/membership state grant access.
+    // The directory is public: it lists approved members, which is the same
+    // thing the club shows the world. Signing in only marks which card is
+    // yours.
     const approved = (await dependencies.loadMembers()).filter((member) => member.status === 'approved');
-    if (!approved.some((member) => member.id === auth.claims.sub)) return { status: 'not-member' };
     const members = approved.filter((member) => member.hasProfile !== false).map((member): DirectoryMember => ({
       id: member.id, name: member.name?.trim() || null,
       picture: safeMemberPicture(member.picture), bio: member.bio ?? '',
@@ -41,7 +38,7 @@ export function createMemberDirectory(dependencies: {
     }));
     members.sort((a, b) => (a.memberNumber ?? Infinity) - (b.memberNumber ?? Infinity) ||
       (a.name ?? '').localeCompare(b.name ?? '', 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id));
-    return { status: 'member', viewerId: auth.claims.sub, members };
+    return { status: 'member', viewerId: auth.isAuthenticated ? auth.claims.sub : null, members };
   };
 }
 

@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
-import Link from "next/link"
 import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import SiteFooter from "@/components/site-footer"
@@ -36,14 +35,6 @@ export default async function MembersPage() {
         {directory === null ? (
           <Notice description="We couldn’t load the member directory. Please try again in a moment.">
             <Button asChild><a href={tekidMembersPath}>Try again</a></Button>
-          </Notice>
-        ) : directory.status === "signed-out" ? (
-          <Notice description="Sign in with tekID to see who’s building at dot*WTF.">
-            <Button asChild><a href={`/api/tekid/sign-in?returnTo=${tekidMembersPath}`}>Sign in</a></Button>
-          </Notice>
-        ) : directory.status === "not-member" ? (
-          <Notice description="The directory opens once your application is approved. Complete your profile to apply, or check your application status there.">
-            <Button asChild><Link href={tekidProfilePath}>Your profile and application</Link></Button>
           </Notice>
         ) : (
           <>
