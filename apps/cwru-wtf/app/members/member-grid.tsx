@@ -13,7 +13,7 @@ const socialIcons = { github: Github, instagram: Instagram, linkedin: Linkedin, 
 
 export default function MemberGrid({ members, viewerId }: {
   members: DirectoryMember[]
-  viewerId: string
+  viewerId: string | null
 }) {
   return (
     <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
